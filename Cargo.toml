@@ -1,0 +1,12 @@
+[package]
+name = "rust_binance"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+binance-rs-async = "1.3"
+rust_decimal = "1.33"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
