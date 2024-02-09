@@ -106,6 +106,7 @@ impl SpotClient {
                 "maximum transaction amount not reached",
             )));
         }
+
         let amount = self
             .spot
             .selling_income_amount(price, &quantity_with_precision);
@@ -130,6 +131,7 @@ impl SpotClient {
         Ok(result)
     }
 }
+
 
 #[allow(refining_impl_trait)]
 impl Master for SpotClient {
