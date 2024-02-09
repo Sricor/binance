@@ -5,8 +5,7 @@ edition = "2021"
 
 
 [dependencies]
+tokio = { version = "1", features = ["full"] }
 binance-rs-async = "1.3"
 rust_decimal = "1.33"
 
-[dev-dependencies]
-tokio = { version = "1", features = ["full"] }

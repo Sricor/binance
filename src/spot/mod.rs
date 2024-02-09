@@ -73,6 +73,10 @@ impl Spot {
 
         false
     }
+
+    pub fn buying_quantity_by_amount(&self, price: &Price, amount: &Amount) -> Quantity {
+        self.transaction_quantity_with_precision(&(amount / price))
+    }
 }
 
 #[cfg(test)]
@@ -175,5 +179,20 @@ mod tests {
             &Decimal::from_f64(0.00025).unwrap(),
         );
         assert_eq!(allow, false);
+    }
+
+    #[test]
+    fn test_buying_quantity_by_amount() {
+        let quantity = btc_spot().buying_quantity_by_amount(
+            &Decimal::from_f64(68.25).unwrap(),
+            &Decimal::from_f64(215.32).unwrap(),
+        );
+        assert_eq!(quantity, Decimal::from_f64(3.15487).unwrap());
+
+        let quantity = eth_spot().buying_quantity_by_amount(
+            &Decimal::from_f64(9854.12).unwrap(),
+            &Decimal::from_f64(300.5961).unwrap(),
+        );
+        assert_eq!(quantity, Decimal::from_f64(0.03050).unwrap());
     }
 }
