@@ -1,10 +1,10 @@
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
+use crate::noun::*;
+
 pub mod client;
 pub mod error;
-
-use crate::noun::*;
 
 #[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub struct Spot {
@@ -105,6 +105,39 @@ pub struct SpotSelling {
     pub quantity_leave_after_transaction: Quantity,
 }
 
+#[derive(Debug, PartialEq, Deserialize, Serialize)]
+pub struct SpotTransaction {
+    buying: SpotBuying,
+    selling: SpotSelling,
+
+    /// Net profit does not include leave quantity
+    net_profit: Amount,
+
+    /// Return on investment (ROI)
+    net_profit_margin: Decimal,
+}
+
+impl SpotTransaction {
+    pub fn new(buying: SpotBuying, selling: SpotSelling) -> Self {
+        let net_profit = selling.income_after_commission - buying.spent;
+        let net_profit_margin = (net_profit / buying.spent).round_dp(6);
+        Self {
+            buying,
+            selling,
+            net_profit,
+            net_profit_margin,
+        }
+    }
+
+    pub fn net_profit(&self) -> &Amount {
+        &self.net_profit
+    }
+
+    pub fn net_profit_margin(&self) -> &Decimal {
+        &self.net_profit_margin
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use rust_decimal::prelude::FromPrimitive;
@@ -132,6 +165,44 @@ mod tests {
             minimum_transaction_amount: Decimal::from(5),
             buying_commission: Decimal::from_f64(0.001).unwrap(),
             selling_commission: Decimal::from_f64(0.001).unwrap(),
+        }
+    }
+
+    fn buying_spot_one() -> SpotBuying {
+        SpotBuying {
+            price: Decimal::from_f64(100.23).unwrap(),
+            quantity: Decimal::from_f64(1.49).unwrap(),
+            spent: Decimal::from_f64(149.3427).unwrap(),
+            quantity_after_commission: Decimal::from_f64(1.48851).unwrap(),
+        }
+    }
+
+    fn selling_spot_one() -> SpotSelling {
+        SpotSelling {
+            price: Decimal::from_f64(112.58).unwrap(),
+            quantity: Decimal::from_f64(1.48).unwrap(),
+            income: Decimal::from_f64(166.6184).unwrap(),
+            income_after_commission: Decimal::from_f64(166.4517816).unwrap(),
+            quantity_leave_after_transaction: Decimal::from_f64(0.00851).unwrap(),
+        }
+    }
+
+    fn buying_spot_two() -> SpotBuying {
+        SpotBuying {
+            price: Decimal::from_f64(200.58).unwrap(),
+            quantity: Decimal::from_f64(2.59248).unwrap(),
+            spent: Decimal::from_f64(519.9996384).unwrap(),
+            quantity_after_commission: Decimal::from_f64(2.5898875).unwrap(),
+        }
+    }
+
+    fn selling_spot_two() -> SpotSelling {
+        SpotSelling {
+            price: Decimal::from_f64(112.69).unwrap(),
+            quantity: Decimal::from_f64(2.58988).unwrap(),
+            income: Decimal::from_f64(291.8535772).unwrap(),
+            income_after_commission: Decimal::from_f64(291.56172362).unwrap(),
+            quantity_leave_after_transaction: Decimal::from_f64(0.0000075).unwrap(),
         }
     }
 
@@ -221,4 +292,35 @@ mod tests {
         );
         assert_eq!(quantity, Decimal::from_f64(0.03050).unwrap());
     }
+
+    #[test]
+    fn test_transaction_net_profit() {
+        let transaction = SpotTransaction::new(buying_spot_one(), selling_spot_one());
+        assert_eq!(
+            transaction.net_profit().clone(),
+            Decimal::from_f64(17.1090816).unwrap()
+        );
+
+        let transaction = SpotTransaction::new(buying_spot_two(), selling_spot_two());
+        assert_eq!(
+            transaction.net_profit().clone(),
+            Decimal::from_f64(-228.43791478).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_transaction_net_profit_margin() {
+        let transaction = SpotTransaction::new(buying_spot_one(), selling_spot_one());
+        assert_eq!(
+            transaction.net_profit_margin().clone(),
+            Decimal::from_f64(0.114563).unwrap()
+        );
+
+        let transaction = SpotTransaction::new(buying_spot_two(), selling_spot_two());
+        assert_eq!(
+            transaction.net_profit_margin().clone(),
+            Decimal::from_f64(-0.439304).unwrap()
+        );
+    }
 }
+

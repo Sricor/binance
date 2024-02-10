@@ -6,9 +6,11 @@ pub mod strategy {
 
 use std::future::Future;
 
+use serde::{Deserialize, Serialize};
+
 use crate::noun::*;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct Position {
     price: Price,
     amount: Amount,
@@ -77,7 +79,7 @@ pub trait Master {
 pub trait Treasurer {
     fn balance(&self) -> impl std::future::Future<Output = Decimal> + Send;
 
-    // incom
+    // income
     fn transfer_in(&self, amount: &Amount) -> impl std::future::Future<Output = ()> + Send;
 
     // spent
