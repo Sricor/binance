@@ -1,50 +1,43 @@
 use rust_decimal::Decimal;
+use serde::{Deserialize, Serialize};
 
 pub mod client;
 pub mod error;
 
 use crate::noun::*;
 
+#[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub struct Spot {
-    symbol: Symbol,
-    transaction_quantity_precision: Precision,
+    /// Trading currency pairs
+    pub symbol: Symbol,
 
-    holding_quantity_precision: Precision,
-    amount_income_precision: Precision,
-    buying_commission: Commission,
-    selling_commission: Commission,
-    minimum_transaction_amount: Amount,
+    /// Transaction precision
+    pub transaction_quantity_precision: Precision,
+
+    /// Holding quantity precision
+    pub quantity_precision: Precision,
+
+    /// Income amount precision
+    pub amount_precision: Precision,
+
+    /// Buying commission
+    pub buying_commission: Commission,
+
+    /// Selling commission
+    pub selling_commission: Commission,
+
+    /// Minimum transaction amount
+    pub minimum_transaction_amount: Amount,
 }
 
 impl Spot {
-    pub fn new(
-        symbol: Symbol,
-        transaction_quantity_precision: Precision,
-        holding_quantity_precision: Precision,
-        amount_income_precision: Precision,
-        buying_commission: Commission,
-        selling_commission: Commission,
-        minimum_transaction_amount: Amount,
-    ) -> Self {
-        Self {
-            symbol,
-            transaction_quantity_precision,
-            holding_quantity_precision,
-            amount_income_precision,
-            buying_commission,
-            selling_commission,
-            minimum_transaction_amount,
-        }
-    }
-
     pub fn symbol(&self) -> &Symbol {
         &self.symbol
     }
 
     // Calculating the buying commission fee, the actual holding quantity
     pub fn buying_quantity_with_commission(&self, quantity: &Quantity) -> Quantity {
-        (quantity * (Decimal::ONE - self.buying_commission))
-            .round_dp(self.holding_quantity_precision)
+        (quantity * (Decimal::ONE - self.buying_commission)).round_dp(self.quantity_precision)
     }
 
     // Accurate the quantity to meet the transaction accuracy requirements
@@ -54,7 +47,7 @@ impl Spot {
 
     // Calculate earnings after upfront selling commission fees
     pub fn selling_amount_with_commission(&self, amount: &Amount) -> Amount {
-        let commission = (amount * self.selling_commission).round_dp(self.amount_income_precision);
+        let commission = (amount * self.selling_commission).round_dp(self.amount_precision);
         amount - commission
     }
 
@@ -79,6 +72,39 @@ impl Spot {
     }
 }
 
+#[derive(Debug, PartialEq, Deserialize, Serialize)]
+pub struct SpotBuying {
+    /// Buying price
+    pub price: Price,
+
+    /// Buying quantity
+    pub quantity: Quantity,
+
+    /// Amount spent on buying
+    pub spent: Amount,
+
+    /// Buying quantity after commission, also the actual quantity held
+    pub quantity_after_commission: Quantity,
+}
+
+#[derive(Debug, PartialEq, Deserialize, Serialize)]
+pub struct SpotSelling {
+    /// Selling price
+    pub price: Price,
+
+    /// Selling quantity
+    pub quantity: Quantity,
+
+    /// Income gained after selling
+    pub income: Amount,
+
+    /// Income gained after commission selling, also the actual income recorded
+    pub income_after_commission: Amount,
+
+    /// Quantity leave after selling
+    pub quantity_leave_after_transaction: Quantity,
+}
+
 #[cfg(test)]
 mod tests {
     use rust_decimal::prelude::FromPrimitive;
@@ -89,8 +115,8 @@ mod tests {
         Spot {
             symbol: "BTCUSDT".into(),
             transaction_quantity_precision: 5,
-            holding_quantity_precision: 7, // BTC Precision
-            amount_income_precision: 8,    // USDT Precision
+            quantity_precision: 7, // BTC Precision
+            amount_precision: 8,   // USDT Precision
             minimum_transaction_amount: Decimal::from(5),
             buying_commission: Decimal::from_f64(0.001).unwrap(),
             selling_commission: Decimal::from_f64(0.001).unwrap(),
@@ -101,8 +127,8 @@ mod tests {
         Spot {
             symbol: "ETHUSDT".into(),
             transaction_quantity_precision: 4,
-            holding_quantity_precision: 7, // ETH Precision
-            amount_income_precision: 8,    // USDT Precision
+            quantity_precision: 7, // ETH Precision
+            amount_precision: 8,   // USDT Precision
             minimum_transaction_amount: Decimal::from(5),
             buying_commission: Decimal::from_f64(0.001).unwrap(),
             selling_commission: Decimal::from_f64(0.001).unwrap(),

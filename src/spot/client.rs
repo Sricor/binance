@@ -1,7 +1,7 @@
 use binance::{api::Binance, futures::account::FuturesAccount};
 use rust_decimal::prelude::ToPrimitive;
 
-use super::{error::SpotClientError, Spot};
+use super::{error::SpotClientError, Spot, SpotBuying, SpotSelling};
 use crate::{
     noun::*,
     strategy::{Master, Position, PositionSide, Strategy, Treasurer},
@@ -38,22 +38,6 @@ pub struct SpotClientOption {
     is_production: bool,
 }
 
-#[derive(Debug, PartialEq)]
-pub struct SpotBuying {
-    pub amount_spent: Amount,
-    pub buying_quantity: Quantity,
-    pub holding_quantity: Quantity,
-    pub quantity_after_transaction: Quantity,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct SpotSelling {
-    pub amount_income: Amount,
-    pub amount_income_after_commission: Amount,
-    pub selling_quantity: Quantity,
-    pub quantity_after_transaction: Quantity,
-}
-
 impl SpotClient {
     pub fn is_production(&self) -> bool {
         match &self.option {
@@ -63,27 +47,20 @@ impl SpotClient {
     }
 
     pub async fn buy(&self, price: &Price, quantity: &Quantity) -> SpotClientResult<SpotBuying> {
-        let quantity_with_precision = self.spot.transaction_quantity_with_precision(quantity);
-        if !self
-            .spot
-            .is_allow_transaction(price, &quantity_with_precision)
-        {
+        let buying_quantity = self.spot.transaction_quantity_with_precision(quantity);
+        if !self.spot.is_allow_transaction(price, &buying_quantity) {
             return Err(SpotClientError::Trading(String::from(
-                "maximum transaction amount not reached",
+                "minimum transaction amount not reached",
             )));
         }
-        let amount_spent = self
-            .spot
-            .buying_spent_amount(price, &quantity_with_precision);
-        let holding_quantity = self
-            .spot
-            .buying_quantity_with_commission(&quantity_with_precision);
+        let buying_spent_amount = self.spot.buying_spent_amount(price, &buying_quantity);
+        let holding_quantity = self.spot.buying_quantity_with_commission(&buying_quantity);
 
         let result = SpotBuying {
-            amount_spent,
-            holding_quantity,
-            buying_quantity: quantity_with_precision,
-            quantity_after_transaction: quantity - quantity_with_precision,
+            price: price.clone(),
+            quantity: buying_quantity,
+            spent: buying_spent_amount,
+            quantity_after_commission: holding_quantity,
         };
 
         if self.is_production() {
@@ -100,22 +77,21 @@ impl SpotClient {
     }
 
     pub async fn sell(&self, price: &Price, quantity: &Quantity) -> SpotClientResult<SpotSelling> {
-        let quantity_with_precision = self.spot.transaction_quantity_with_precision(quantity);
+        let selling_quantity = self.spot.transaction_quantity_with_precision(quantity);
         if !self.spot.is_allow_transaction(price, quantity) {
             return Err(SpotClientError::Trading(String::from(
-                "maximum transaction amount not reached",
+                "minimum transaction amount not reached",
             )));
         }
 
-        let amount = self
-            .spot
-            .selling_income_amount(price, &quantity_with_precision);
+        let selling_income = self.spot.selling_income_amount(price, &selling_quantity);
 
         let result = SpotSelling {
-            amount_income: amount,
-            amount_income_after_commission: self.spot.selling_amount_with_commission(&amount),
-            selling_quantity: quantity_with_precision,
-            quantity_after_transaction: quantity - quantity_with_precision,
+            price: price.clone(),
+            quantity: selling_quantity,
+            income: selling_income,
+            income_after_commission: self.spot.selling_amount_with_commission(&selling_income),
+            quantity_leave_after_transaction: quantity - selling_quantity,
         };
 
         if self.is_production() {
@@ -131,7 +107,6 @@ impl SpotClient {
         Ok(result)
     }
 }
-
 
 #[allow(refining_impl_trait)]
 impl Master for SpotClient {
@@ -157,7 +132,7 @@ impl Master for SpotClient {
                     .await;
 
                 treasurer
-                    .transfer_in(&selling.amount_income_after_commission)
+                    .transfer_in(&selling.income_after_commission)
                     .await;
             }
         }
@@ -166,13 +141,16 @@ impl Master for SpotClient {
             let buy_quantity = self.spot.buying_quantity_by_amount(price, &buy_amount);
             let buying = self.buy(price, &buy_quantity).await?;
 
-            let position =
-                Position::new(price.clone(), buying.amount_spent, buying.holding_quantity);
+            let position = Position::new(
+                price.clone(),
+                buying.spent,
+                buying.quantity_after_commission,
+            );
             strategy
                 .update_position(&PositionSide::Increase(position))
                 .await;
 
-            treasurer.transfer_out(&buying.amount_spent).await;
+            treasurer.transfer_out(&buying.spent).await;
         }
 
         Ok(())
@@ -195,8 +173,8 @@ mod tests {
         Spot {
             symbol: "BTCUSDT".into(),
             transaction_quantity_precision: 5,
-            holding_quantity_precision: 7, // BTC Precision
-            amount_income_precision: 8,    // USDT Precision
+            quantity_precision: 7, // BTC Precision
+            amount_precision: 8,   // USDT Precision
             minimum_transaction_amount: Decimal::from(5),
             buying_commission: Decimal::from_f64(0.001).unwrap(),
             selling_commission: Decimal::from_f64(0.001).unwrap(),
@@ -207,8 +185,8 @@ mod tests {
         Spot {
             symbol: "ETHUSDT".into(),
             transaction_quantity_precision: 4,
-            holding_quantity_precision: 7, // ETH Precision
-            amount_income_precision: 8,    // USDT Precision
+            quantity_precision: 7, // ETH Precision
+            amount_precision: 8,   // USDT Precision
             minimum_transaction_amount: Decimal::from(5),
             buying_commission: Decimal::from_f64(0.001).unwrap(),
             selling_commission: Decimal::from_f64(0.001).unwrap(),
@@ -226,10 +204,10 @@ mod tests {
             .await
             .unwrap();
         let assert = SpotBuying {
-            amount_spent: Decimal::from_f64(64.71813).unwrap(),
-            buying_quantity: Decimal::from_f64(0.0015).unwrap(),
-            holding_quantity: Decimal::from_f64(0.0014985).unwrap(),
-            quantity_after_transaction: Decimal::from_f64(0.0).unwrap(),
+            price: Decimal::from_f64(43145.42).unwrap(),
+            spent: Decimal::from_f64(64.71813).unwrap(),
+            quantity: Decimal::from_f64(0.0015).unwrap(),
+            quantity_after_commission: Decimal::from_f64(0.0014985).unwrap(),
         };
         assert_eq!(buying, assert);
 
@@ -242,10 +220,10 @@ mod tests {
             .await
             .unwrap();
         let assert = SpotBuying {
-            amount_spent: Decimal::from_f64(68.6012178).unwrap(),
-            buying_quantity: Decimal::from_f64(0.00159).unwrap(),
-            holding_quantity: Decimal::from_f64(0.0015884).unwrap(),
-            quantity_after_transaction: Decimal::from_f64(0.00000858).unwrap(),
+            price: Decimal::from_f64(43145.42).unwrap(),
+            spent: Decimal::from_f64(68.6012178).unwrap(),
+            quantity: Decimal::from_f64(0.00159).unwrap(),
+            quantity_after_commission: Decimal::from_f64(0.0015884).unwrap(),
         };
         assert_eq!(buying, assert);
 
@@ -258,10 +236,10 @@ mod tests {
             .await
             .unwrap();
         let assert = SpotBuying {
-            amount_spent: Decimal::from_f64(205.087160).unwrap(),
-            buying_quantity: Decimal::from_f64(0.0790).unwrap(),
-            holding_quantity: Decimal::from_f64(0.0789210).unwrap(),
-            quantity_after_transaction: Decimal::from_f64(0.0).unwrap(),
+            price: Decimal::from_f64(2596.04).unwrap(),
+            spent: Decimal::from_f64(205.087160).unwrap(),
+            quantity: Decimal::from_f64(0.0790).unwrap(),
+            quantity_after_commission: Decimal::from_f64(0.0789210).unwrap(),
         };
         assert_eq!(buying, assert);
 
@@ -274,10 +252,10 @@ mod tests {
             .await
             .unwrap();
         let assert = SpotBuying {
-            amount_spent: Decimal::from_f64(205.346764).unwrap(),
-            buying_quantity: Decimal::from_f64(0.0791).unwrap(),
-            holding_quantity: Decimal::from_f64(0.0790209).unwrap(),
-            quantity_after_transaction: Decimal::from_f64(0.0000531).unwrap(),
+            price: Decimal::from_f64(2596.04).unwrap(),
+            spent: Decimal::from_f64(205.346764).unwrap(),
+            quantity: Decimal::from_f64(0.0791).unwrap(),
+            quantity_after_commission: Decimal::from_f64(0.0790209).unwrap(),
         };
         assert_eq!(buying, assert);
     }
@@ -293,10 +271,11 @@ mod tests {
             .await
             .unwrap();
         let assert = SpotSelling {
-            amount_income: Decimal::from_f64(150.038939).unwrap(),
-            amount_income_after_commission: Decimal::from_f64(149.88890006).unwrap(),
-            selling_quantity: Decimal::from_f64(0.00349).unwrap(),
-            quantity_after_transaction: Decimal::from_f64(0.0).unwrap(),
+            price: Decimal::from_f64(42991.10).unwrap(),
+            income: Decimal::from_f64(150.038939).unwrap(),
+            income_after_commission: Decimal::from_f64(149.88890006).unwrap(),
+            quantity: Decimal::from_f64(0.00349).unwrap(),
+            quantity_leave_after_transaction: Decimal::from_f64(0.0).unwrap(),
         };
         assert_eq!(buying, assert);
 
@@ -309,10 +288,11 @@ mod tests {
             .await
             .unwrap();
         let assert = SpotSelling {
-            amount_income: Decimal::from_f64(150.038939).unwrap(),
-            amount_income_after_commission: Decimal::from_f64(149.88890006).unwrap(),
-            selling_quantity: Decimal::from_f64(0.00349).unwrap(),
-            quantity_after_transaction: Decimal::from_f64(0.00000135).unwrap(),
+            price: Decimal::from_f64(42991.10).unwrap(),
+            income: Decimal::from_f64(150.038939).unwrap(),
+            income_after_commission: Decimal::from_f64(149.88890006).unwrap(),
+            quantity: Decimal::from_f64(0.00349).unwrap(),
+            quantity_leave_after_transaction: Decimal::from_f64(0.00000135).unwrap(),
         };
         assert_eq!(buying, assert);
 
@@ -325,10 +305,11 @@ mod tests {
             .await
             .unwrap();
         let assert = SpotSelling {
-            amount_income: Decimal::from_f64(280.052256).unwrap(),
-            amount_income_after_commission: Decimal::from_f64(279.77220374).unwrap(),
-            selling_quantity: Decimal::from_f64(0.1056).unwrap(),
-            quantity_after_transaction: Decimal::from_f64(0.0).unwrap(),
+            price: Decimal::from_f64(2652.01).unwrap(),
+            income: Decimal::from_f64(280.052256).unwrap(),
+            income_after_commission: Decimal::from_f64(279.77220374).unwrap(),
+            quantity: Decimal::from_f64(0.1056).unwrap(),
+            quantity_leave_after_transaction: Decimal::from_f64(0.0).unwrap(),
         };
         assert_eq!(buying, assert);
 
@@ -341,10 +322,11 @@ mod tests {
             .await
             .unwrap();
         let assert = SpotSelling {
-            amount_income: Decimal::from_f64(278.726251).unwrap(),
-            amount_income_after_commission: Decimal::from_f64(278.44752475).unwrap(),
-            selling_quantity: Decimal::from_f64(0.1051).unwrap(),
-            quantity_after_transaction: Decimal::from_f64(0.000036).unwrap(),
+            price: Decimal::from_f64(2652.01).unwrap(),
+            income: Decimal::from_f64(278.726251).unwrap(),
+            income_after_commission: Decimal::from_f64(278.44752475).unwrap(),
+            quantity: Decimal::from_f64(0.1051).unwrap(),
+            quantity_leave_after_transaction: Decimal::from_f64(0.000036).unwrap(),
         };
         assert_eq!(buying, assert);
     }

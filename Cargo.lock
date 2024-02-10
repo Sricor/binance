@@ -1092,6 +1092,7 @@ version = "0.1.0"
 dependencies = [
  "binance-rs-async",
  "rust_decimal",
+ "serde",
  "tokio",
 ]
 
