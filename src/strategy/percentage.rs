@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use tokio::sync::Mutex;
 
-use super::{Position, PositionSide, Strategy};
+use super::{Order, PositionSide, Strategy};
 use crate::noun::*;
 
 pub struct Percentage {
@@ -10,7 +10,7 @@ pub struct Percentage {
     target_percent: Decimal,
     is_completed: AtomicBool,
     stop_percent: Option<Decimal>,
-    positions: Mutex<Vec<Position>>,
+    positions: Mutex<Vec<Order>>,
     start_buying_price: Option<Price>,
 }
 
@@ -35,7 +35,7 @@ impl Percentage {
         self.is_completed.store(true, Ordering::SeqCst)
     }
 
-    pub async fn positions(&self) -> Vec<Position> {
+    pub async fn positions(&self) -> Vec<Order> {
         self.positions.lock().await.clone()
     }
 }
@@ -59,7 +59,7 @@ impl Strategy for Percentage {
         None
     }
 
-    async fn predictive_sell(&self, price: &Price) -> Option<Vec<Position>> {
+    async fn predictive_sell(&self, price: &Price) -> Option<Vec<Order>> {
         if self.is_completed() {
             return None;
         }
@@ -91,6 +91,7 @@ impl Strategy for Percentage {
             PositionSide::Increase(v) => positions.push(v.clone()),
             PositionSide::Decrease(v) => {
                 if let Some(index) = positions.iter().position(|e| e == v) {
+                    println!("completed");
                     positions.remove(index);
                     self.completed();
                 };

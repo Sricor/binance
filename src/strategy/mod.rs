@@ -1,38 +1,32 @@
+mod grid;
 mod percentage;
 
 pub mod strategy {
+    pub use super::grid::{Bound, BoundPosition, Grid};
     pub use super::percentage::Percentage;
 }
 
-use std::future::Future;
-
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use std::future::Future;
 
 use crate::noun::*;
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-pub struct Position {
+pub struct Order {
     price: Price,
     amount: Amount,
     quantity: Quantity,
+    timestamp: i64,
 }
 
-impl Default for Position {
-    fn default() -> Self {
-        Self {
-            price: Decimal::ZERO,
-            amount: Decimal::ZERO,
-            quantity: Decimal::ZERO,
-        }
-    }
-}
-
-impl Position {
+impl Order {
     pub fn new(price: Price, amount: Amount, quantity: Quantity) -> Self {
         Self {
             price,
             amount,
             quantity,
+            timestamp: Utc::now().timestamp(),
         }
     }
 
@@ -49,9 +43,17 @@ impl Position {
     }
 }
 
+pub enum Position {
+    Stock(Order),
+    None,
+}
+
 pub enum PositionSide {
-    Increase(Position),
-    Decrease(Position),
+    /// Complete buying order
+    Increase(Order),
+
+    /// Complete selling order
+    Decrease(Order),
 }
 
 pub trait Strategy {
@@ -59,7 +61,7 @@ pub trait Strategy {
     fn predictive_buy(&self, price: &Price) -> impl Future<Output = Option<Amount>> + Send;
 
     // Sell signal, return Some (Vec<Position>) when selling is required
-    fn predictive_sell(&self, price: &Price) -> impl Future<Output = Option<Vec<Position>>> + Send;
+    fn predictive_sell(&self, price: &Price) -> impl Future<Output = Option<Vec<Order>>> + Send;
 
     // update strategic positions after passing a trade
     fn update_position(&self, side: &PositionSide) -> impl Future<Output = ()> + Send;

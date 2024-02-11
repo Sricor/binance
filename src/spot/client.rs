@@ -4,7 +4,7 @@ use rust_decimal::prelude::ToPrimitive;
 use super::{error::SpotClientError, Spot, SpotBuying, SpotSelling};
 use crate::{
     noun::*,
-    strategy::{Master, Position, PositionSide, Strategy, Treasurer},
+    strategy::{Master, Order, PositionSide, Strategy, Treasurer},
 };
 
 type SpotClientResult<T> = Result<T, SpotClientError>;
@@ -123,17 +123,21 @@ impl Master for SpotClient {
         }
 
         if let Some(sell_list) = strategy.predictive_sell(price).await {
-            for p in sell_list.iter() {
-                let selling = self.sell(price, p.quantity()).await?;
+            if !sell_list.is_empty() {
+                for o in sell_list.iter() {
+                    let selling = self.sell(price, o.quantity()).await?;
 
-                // TODO: return leave quantity
-                strategy
-                    .update_position(&PositionSide::Decrease(p.clone()))
-                    .await;
+                    // TODO: return leave quantity
+                    strategy
+                        .update_position(&PositionSide::Decrease(o.clone()))
+                        .await;
 
-                treasurer
-                    .transfer_in(&selling.income_after_commission)
-                    .await;
+                    treasurer
+                        .transfer_in(&selling.income_after_commission)
+                        .await;
+                }
+
+                return Ok(());
             }
         }
 
@@ -141,16 +145,17 @@ impl Master for SpotClient {
             let buy_quantity = self.spot.buying_quantity_by_amount(price, &buy_amount);
             let buying = self.buy(price, &buy_quantity).await?;
 
-            let position = Position::new(
+            let order = Order::new(
                 price.clone(),
                 buying.spent,
                 buying.quantity_after_commission,
             );
             strategy
-                .update_position(&PositionSide::Increase(position))
+                .update_position(&PositionSide::Increase(order))
                 .await;
 
             treasurer.transfer_out(&buying.spent).await;
+            return Ok(());
         }
 
         Ok(())
@@ -161,9 +166,16 @@ impl Master for SpotClient {
 mod tests {
     use rust_decimal::prelude::FromPrimitive;
 
-    use crate::{strategy::strategy::Percentage, treasurer::Prosperity};
+    use crate::{
+        strategy::strategy::{Bound, BoundPosition, Grid, Percentage},
+        treasurer::Prosperity,
+    };
 
     use super::*;
+
+    fn to_decimal(value: f64) -> Decimal {
+        Decimal::from_f64(value).unwrap()
+    }
 
     fn new_client(spot: Spot) -> SpotClient {
         SpotClient::new("".into(), "".into(), spot, None)
@@ -371,6 +383,17 @@ mod tests {
         ]
     }
 
+    fn predict_price_four() -> Vec<Price> {
+        vec![
+            to_decimal(54.90),
+            to_decimal(64.90),
+            to_decimal(65.10),
+            to_decimal(74.90),
+            to_decimal(75.10),
+            to_decimal(85.10),
+        ]
+    }
+
     #[tokio::test]
     async fn test_strategy_trap_percentage_one() {
         let price = predict_price_one();
@@ -528,5 +551,24 @@ mod tests {
         assert_eq!(strategy.is_completed(), false);
         assert_eq!(strategy.positions().await.is_empty(), true);
         assert_eq!(treasurer.balance().await, Decimal::from_f64(0.0).unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_strategy_trap_grid() {
+        let price = predict_price_four();
+        let client = new_client(btc_spot());
+        let treasurer = Prosperity::new(None);
+        let positions = BoundPosition::with_copies(Bound(to_decimal(50.0), to_decimal(90.0)), 4);
+        let strategy = Grid::new(to_decimal(100.0), positions);
+
+        for p in price.iter() {
+            let result = client.trap(p, &strategy, &treasurer).await;
+            if let Err(e) = result {
+                println!("{e}");
+            }
+        }
+
+        assert_eq!(strategy.is_completed(), false);
+        assert_eq!(treasurer.balance().await, to_decimal(11.80321024));
     }
 }

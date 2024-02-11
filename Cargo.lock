@@ -1091,6 +1091,7 @@ name = "rust_binance"
 version = "0.1.0"
 dependencies = [
  "binance-rs-async",
+ "chrono",
  "rust_decimal",
  "serde",
  "tokio",
