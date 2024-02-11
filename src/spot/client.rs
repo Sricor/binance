@@ -571,4 +571,40 @@ mod tests {
         assert_eq!(strategy.is_completed(), false);
         assert_eq!(treasurer.balance().await, to_decimal(11.80321024));
     }
+
+    #[tokio::test]
+    async fn test_strategy_trap_grid_predictive_lowest_profit_price() {
+        let client = new_client(btc_spot());
+        let treasurer = Prosperity::new(None);
+        let positions = BoundPosition::with_copies(Bound(to_decimal(50.0), to_decimal(90.0)), 4);
+        let strategy = Grid::new(to_decimal(100.0), positions);
+
+        for p in strategy.predictive_lowest_profit_price().iter() {
+            let result = client.trap(p, &strategy, &treasurer).await;
+            if let Err(e) = result {
+                println!("{e}");
+            }
+        }
+
+        assert_eq!(strategy.is_completed(), false);
+        assert_eq!(treasurer.balance().await, to_decimal(11.567461825));
+    }
+
+    #[tokio::test]
+    async fn test_strategy_trap_grid_predictive_highest_profit_price() {
+        let client = new_client(btc_spot());
+        let treasurer = Prosperity::new(None);
+        let positions = BoundPosition::with_copies(Bound(to_decimal(50.0), to_decimal(90.0)), 4);
+        let strategy = Grid::new(to_decimal(100.0), positions);
+
+        for p in strategy.predictive_highest_profit_price().iter() {
+            let result = client.trap(p, &strategy, &treasurer).await;
+            if let Err(e) = result {
+                println!("{e}");
+            }
+        }
+
+        assert_eq!(strategy.is_completed(), false);
+        assert_eq!(treasurer.balance().await, to_decimal(25.25451036));
+    }
 }

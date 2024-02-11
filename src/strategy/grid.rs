@@ -1,3 +1,4 @@
+use rust_decimal::prelude::FromPrimitive;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
@@ -81,17 +82,43 @@ impl Grid {
         }
     }
 
-    fn find_bound(&self, price: &Price) -> Option<usize> {
-        self.positions
+    pub fn predictive_lowest_profit_price(&self) -> Vec<Price> {
+        let mut result = Vec::with_capacity(self.positions.len() + 1);
+        for i in self.positions.iter() {
+            let buying_price = i.buying.1 * Decimal::from_f64(0.9999).unwrap();
+            let selling_price = i.selling.0 * Decimal::from_f64(1.0001).unwrap();
+            result.push(buying_price.trunc_with_scale(8));
+            result.push(selling_price.trunc_with_scale(8));
+        }
+
+        result
+    }
+
+    pub fn predictive_highest_profit_price(&self) -> Vec<Price> {
+        let mut result = Vec::with_capacity(self.positions.len() + 1);
+        for i in self.positions.iter() {
+            let buying_price = i.buying.0 * Decimal::from_f64(1.0001).unwrap();
+            let selling_price = i.selling.1 * Decimal::from_f64(0.9999).unwrap();
+            result.push(buying_price.trunc_with_scale(8));
+            result.push(selling_price.trunc_with_scale(8));
+        }
+
+        result
+    }
+
+    pub fn find_bound_position(&self, price: &Price) -> Option<&BoundPosition> {
+        let index = self
+            .positions
             .iter()
-            .position(|e| e.buying.is_within(price) || e.selling.is_within(price))
+            .position(|e| e.buying.is_within(price) || e.selling.is_within(price))?;
+
+        Some(&self.positions[index])
     }
 }
 
 impl Strategy for Grid {
     async fn predictive_buy(&self, price: &Price) -> Option<Amount> {
-        let index = self.find_bound(price)?;
-        let bound = &self.positions[index];
+        let bound = self.find_bound_position(price)?;
         let position = bound.position.lock().await;
 
         if let Position::None = &*position {
@@ -102,8 +129,7 @@ impl Strategy for Grid {
     }
 
     async fn predictive_sell(&self, price: &Price) -> Option<Vec<Order>> {
-        let index = self.find_bound(price)?;
-        let bound = &self.positions[index];
+        let bound = self.find_bound_position(price)?;
         let position = bound.position.lock().await;
 
         if let Position::Stock(v) = &*position {
@@ -116,16 +142,14 @@ impl Strategy for Grid {
     async fn update_position(&self, side: &PositionSide) -> () {
         match side {
             PositionSide::Increase(v) => {
-                let index = self.find_bound(&v.price).unwrap();
-                let bound = &self.positions[index];
+                let bound = self.find_bound_position(&v.price).unwrap();
 
                 // TODO: is stock?
                 let mut position = bound.position.lock().await;
                 *position = Position::Stock(v.clone());
             }
             PositionSide::Decrease(v) => {
-                let index = self.find_bound(&v.price).unwrap();
-                let bound = &self.positions[index];
+                let bound = self.find_bound_position(&v.price).unwrap();
 
                 // TODO: is none?
                 let mut position = bound.position.lock().await;
@@ -235,5 +259,47 @@ mod tests {
         ];
 
         assert_eq!(bound, target);
+    }
+
+    #[test]
+    fn test_predictive_lowest_profit_price() {
+        let positions = BoundPosition::with_copies(Bound(to_decimal(30.75), to_decimal(175.35)), 6);
+        let gride = Grid::new(to_decimal(50.0), positions);
+
+        let target = vec![
+            to_decimal(42.795720),
+            to_decimal(66.906690),
+            to_decimal(66.893310),
+            to_decimal(91.009100),
+            to_decimal(90.990900),
+            to_decimal(115.11151),
+            to_decimal(115.08849),
+            to_decimal(139.21392),
+            to_decimal(139.18608),
+            to_decimal(163.31633),
+        ];
+
+        assert_eq!(gride.predictive_lowest_profit_price(), target);
+    }
+
+    #[test]
+    fn test_predictive_highest_profit_price() {
+        let positions = BoundPosition::with_copies(Bound(to_decimal(30.75), to_decimal(175.35)), 6);
+        let gride = Grid::new(to_decimal(50.0), positions);
+
+        let target = vec![
+            to_decimal(30.75307500),
+            to_decimal(78.94210500),
+            to_decimal(54.85548500),
+            to_decimal(103.0396950),
+            to_decimal(78.95789500),
+            to_decimal(127.1372850),
+            to_decimal(103.0603050),
+            to_decimal(151.2348750),
+            to_decimal(127.1627150),
+            to_decimal(175.3324650),
+        ];
+
+        assert_eq!(gride.predictive_highest_profit_price(), target);
     }
 }
