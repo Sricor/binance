@@ -81,6 +81,7 @@ impl BoundPosition {
     }
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct Grid {
     investment: Amount,
     positions: Vec<BoundPosition>,
