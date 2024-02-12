@@ -1,6 +1,6 @@
 use rust_decimal::prelude::FromPrimitive;
 use serde::{Deserialize, Serialize};
-use tokio::sync::Mutex;
+use parking_lot::Mutex;
 
 use super::{Order, Position, PositionSide, Strategy};
 use crate::noun::*;
@@ -34,10 +34,10 @@ impl Bound {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct BoundPosition {
     buying: Bound,
     selling: Bound,
-
     position: Mutex<Position>,
 }
 
@@ -135,7 +135,7 @@ impl Grid {
 impl Strategy for Grid {
     async fn predictive_buy(&self, price: &Price) -> Option<Amount> {
         let bound = self.find_bound_position(price)?;
-        let position = bound.position.lock().await;
+        let position = bound.position.lock();
 
         if let Position::None = &*position {
             return Some(self.investment / Decimal::from(self.positions.len() + 1));
@@ -146,7 +146,7 @@ impl Strategy for Grid {
 
     async fn predictive_sell(&self, price: &Price) -> Option<Vec<Order>> {
         let bound = self.find_bound_position(price)?;
-        let position = bound.position.lock().await;
+        let position = bound.position.lock();
 
         if let Position::Stock(v) = &*position {
             return Some(vec![v.clone()]);
@@ -161,14 +161,14 @@ impl Strategy for Grid {
                 let bound = self.find_bound_position(&v.price).unwrap();
 
                 // TODO: is stock?
-                let mut position = bound.position.lock().await;
+                let mut position = bound.position.lock();
                 *position = Position::Stock(v.clone());
             }
             PositionSide::Decrease(v) => {
                 let bound = self.find_bound_position(&v.price).unwrap();
 
                 // TODO: is none?
-                let mut position = bound.position.lock().await;
+                let mut position = bound.position.lock();
                 *position = Position::None;
             }
         };
@@ -329,10 +329,10 @@ mod tests {
             timestamp: 0,
         });
         {
-            let mut lock = positions[0].position().lock().await;
+            let mut lock = positions[0].position().lock();
             *lock = target.clone();
         }
 
-        assert_eq!(*(positions[0].position().lock().await), target);
+        assert_eq!(*(positions[0].position().lock()), target);
     }
 }
