@@ -110,12 +110,11 @@ impl SpotClient {
 
 #[allow(refining_impl_trait)]
 impl Master for SpotClient {
-    async fn trap(
-        &self,
-        price: &Price,
-        strategy: &(impl Strategy + Send + Sync),
-        treasurer: &(impl Treasurer + Send + Sync),
-    ) -> SpotClientResult<()> {
+    async fn trap<S, T>(&self, price: &Price, strategy: &S, treasurer: &T) -> SpotClientResult<()>
+    where
+        S: Strategy + Send,
+        T: Treasurer + Send,
+    {
         if strategy.is_completed() {
             return Err(SpotClientError::Strategy(String::from(
                 "strategy completed",

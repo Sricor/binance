@@ -72,12 +72,15 @@ pub trait Strategy {
 }
 
 pub trait Master {
-    fn trap(
+    async fn trap<S, T>(
         &self,
         price: &Price,
-        strategy: &(impl Strategy + Send + Sync),
-        treasurer: &(impl Treasurer + Send + Sync),
-    ) -> impl std::future::Future<Output = Result<(), impl std::error::Error>> + Send;
+        strategy: &S,
+        treasurer: &T,
+    ) -> Result<(), impl std::error::Error>
+    where
+        S: Strategy + Send,
+        T: Treasurer + Send;
 }
 
 pub trait Treasurer {
