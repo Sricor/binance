@@ -67,6 +67,18 @@ impl BoundPosition {
 
         result
     }
+
+    pub fn buying(&self) -> &Bound {
+        &self.buying
+    }
+
+    pub fn selling(&self) -> &Bound {
+        &self.selling
+    }
+
+    pub fn position(&self) -> &Mutex<Position> {
+        &self.position
+    }
 }
 
 pub struct Grid {
@@ -113,6 +125,10 @@ impl Grid {
             .position(|e| e.buying.is_within(price) || e.selling.is_within(price))?;
 
         Some(&self.positions[index])
+    }
+
+    pub fn positions(&self) -> &Vec<BoundPosition> {
+        &self.positions
     }
 }
 
@@ -301,5 +317,22 @@ mod tests {
         ];
 
         assert_eq!(gride.predictive_highest_profit_price(), target);
+    }
+
+    #[tokio::test]
+    async fn test_position() {
+        let positions = BoundPosition::with_copies(Bound(to_decimal(30.75), to_decimal(175.35)), 6);
+        let target = Position::Stock(Order {
+            price: to_decimal(50.0),
+            amount: to_decimal(100.0),
+            quantity: to_decimal(2.0),
+            timestamp: 0,
+        });
+        {
+            let mut lock = positions[0].position().lock().await;
+            *lock = target.clone();
+        }
+
+        assert_eq!(*(positions[0].position().lock().await), target);
     }
 }

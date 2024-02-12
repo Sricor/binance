@@ -43,11 +43,13 @@ impl Order {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum Position {
     Stock(Order),
     None,
 }
 
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum PositionSide {
     /// Complete buying order
     Increase(Order),
