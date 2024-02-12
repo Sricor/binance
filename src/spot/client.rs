@@ -35,7 +35,7 @@ impl SpotClient {
 
 pub struct SpotClientOption {
     // Note that when true all transactions will be submitted to the exchange
-    is_production: bool,
+    pub is_production: bool,
 }
 
 impl SpotClient {
