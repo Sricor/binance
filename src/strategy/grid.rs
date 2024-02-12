@@ -1,6 +1,6 @@
+use parking_lot::Mutex;
 use rust_decimal::prelude::FromPrimitive;
 use serde::{Deserialize, Serialize};
-use parking_lot::Mutex;
 
 use super::{Order, Position, PositionSide, Strategy};
 use crate::noun::*;

@@ -6,7 +6,7 @@ use crate::noun::*;
 pub mod client;
 pub mod error;
 
-#[derive(Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Spot {
     /// Trading currency pairs
     pub symbol: Symbol,
@@ -72,7 +72,7 @@ impl Spot {
     }
 }
 
-#[derive(Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct SpotBuying {
     /// Buying price
     pub price: Price,
