@@ -78,8 +78,8 @@ pub trait Master {
         &self,
         price: &Price,
         strategy: &S,
-        treasurer: &T,
-    ) -> impl std::future::Future<Output = Result<Self::Item, impl Error>> + Send
+        treasurer: Option<&T>,
+    ) -> impl Future<Output = Result<Self::Item, impl Error>> + Send
     where
         S: Strategy + Send + Sync,
         T: Treasurer + Send + Sync;

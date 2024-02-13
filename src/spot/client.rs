@@ -51,20 +51,7 @@ impl SpotClient {
 
     pub async fn buy(&self, price: &Price, quantity: &Quantity) -> SpotClientResult<SpotBuying> {
         let buying_quantity = self.spot.transaction_quantity_with_precision(quantity);
-        if !self.spot.is_allow_transaction(price, &buying_quantity) {
-            return Err(SpotClientError::Trading(String::from(
-                "minimum transaction amount not reached",
-            )));
-        }
-        let buying_spent_amount = self.spot.buying_spent_amount(price, &buying_quantity);
-        let holding_quantity = self.spot.buying_quantity_with_commission(&buying_quantity);
-
-        let result = SpotBuying {
-            price: price.clone(),
-            quantity: buying_quantity,
-            spent: buying_spent_amount,
-            quantity_after_commission: holding_quantity,
-        };
+        self.is_allow_transaction(price, &buying_quantity)?;
 
         if self.is_production() {
             let buy = self
@@ -73,7 +60,7 @@ impl SpotClient {
                     symbol: self.spot.symbol().clone(),
                     side: binance::rest_model::OrderSide::Buy,
                     order_type: binance::rest_model::OrderType::Market,
-                    quantity: Some(quantity.to_f64().unwrap()),
+                    quantity: Some(buying_quantity.to_f64().unwrap()),
                     price: None,
                     ..OrderRequest::default()
                 })
@@ -84,26 +71,12 @@ impl SpotClient {
             }
         }
 
-        Ok(result)
+        Ok(self.calculator_buying(price, &buying_quantity))
     }
 
     pub async fn sell(&self, price: &Price, quantity: &Quantity) -> SpotClientResult<SpotSelling> {
         let selling_quantity = self.spot.transaction_quantity_with_precision(quantity);
-        if !self.spot.is_allow_transaction(price, quantity) {
-            return Err(SpotClientError::Trading(String::from(
-                "minimum transaction amount not reached",
-            )));
-        }
-
-        let selling_income = self.spot.selling_income_amount(price, &selling_quantity);
-
-        let result = SpotSelling {
-            price: price.clone(),
-            quantity: selling_quantity,
-            income: selling_income,
-            income_after_commission: self.spot.selling_amount_with_commission(&selling_income),
-            quantity_leave_after_transaction: quantity - selling_quantity,
-        };
+        self.is_allow_transaction(price, &selling_quantity)?;
 
         if self.is_production() {
             let sell = self
@@ -112,7 +85,7 @@ impl SpotClient {
                     symbol: self.spot.symbol().clone(),
                     side: binance::rest_model::OrderSide::Sell,
                     order_type: binance::rest_model::OrderType::Market,
-                    quantity: Some(quantity.to_f64().unwrap()),
+                    quantity: Some(selling_quantity.to_f64().unwrap()),
                     price: None,
                     ..OrderRequest::default()
                 })
@@ -123,7 +96,82 @@ impl SpotClient {
             }
         }
 
-        Ok(result)
+        Ok(self.calculator_selling(price, &selling_quantity))
+    }
+
+    pub async fn test_buy(&self, _price: &Price, quantity: &Quantity) -> SpotClientResult<()> {
+        let buy = self
+            .client
+            .place_test_order(OrderRequest {
+                symbol: self.spot.symbol().clone(),
+                side: binance::rest_model::OrderSide::Buy,
+                order_type: binance::rest_model::OrderType::Market,
+                quantity: Some(quantity.to_f64().unwrap()),
+                price: None,
+                ..OrderRequest::default()
+            })
+            .await;
+
+        if let Err(e) = buy {
+            return Err(SpotClientError::Trading(e.to_string()));
+        }
+        Ok(())
+    }
+
+    pub async fn test_sell(&self, _price: &Price, quantity: &Quantity) -> SpotClientResult<()> {
+        let buy = self
+            .client
+            .place_test_order(OrderRequest {
+                symbol: self.spot.symbol().clone(),
+                side: binance::rest_model::OrderSide::Sell,
+                order_type: binance::rest_model::OrderType::Market,
+                quantity: Some(quantity.to_f64().unwrap()),
+                price: None,
+                ..OrderRequest::default()
+            })
+            .await;
+
+        if let Err(e) = buy {
+            return Err(SpotClientError::Trading(e.to_string()));
+        }
+        Ok(())
+    }
+
+    fn calculator_buying(&self, price: &Price, buying_quantity: &Quantity) -> SpotBuying {
+        let spent = self.spot.buying_spent_amount(price, buying_quantity);
+        let quantity_after_commission = self.spot.buying_quantity_with_commission(buying_quantity);
+
+        SpotBuying {
+            spent,
+            price: price.clone(),
+            quantity: buying_quantity.clone(),
+            quantity_after_commission,
+        }
+    }
+
+    fn calculator_selling(&self, price: &Price, selling_quantity: &Quantity) -> SpotSelling {
+        let selling_income = self.spot.selling_income_amount(price, selling_quantity);
+        let income_after_commission = self.spot.selling_amount_with_commission(&selling_income);
+
+        SpotSelling {
+            price: price.clone(),
+            quantity: selling_quantity.clone(),
+            income: selling_income,
+            income_after_commission,
+        }
+    }
+
+    fn is_allow_transaction(&self, price: &Price, quantity: &Quantity) -> SpotClientResult<()> {
+        if !self
+            .spot
+            .is_reached_minimum_transaction_limit(price, quantity)
+        {
+            return Err(SpotClientError::Trading(String::from(
+                "minimum transaction amount not reached",
+            )));
+        }
+
+        Ok(())
     }
 }
 
@@ -135,8 +183,8 @@ impl Master for SpotClient {
         &self,
         price: &Price,
         strategy: &S,
-        treasurer: &T,
-    ) -> Result<Self::Item, impl std::error::Error>
+        treasurer: Option<&T>,
+    ) -> SpotClientResult<Self::Item>
     where
         S: Strategy + Send + Sync,
         T: Treasurer + Send + Sync,
@@ -157,9 +205,9 @@ impl Master for SpotClient {
                         .update_position(&PositionSide::Decrease(o.clone()))
                         .await;
 
-                    treasurer
-                        .transfer_in(&selling.income_after_commission)
-                        .await;
+                    if let Some(t) = treasurer {
+                        t.transfer_in(&selling.income_after_commission).await;
+                    }
                 }
 
                 return Ok(());
@@ -179,7 +227,10 @@ impl Master for SpotClient {
                 .update_position(&PositionSide::Increase(order))
                 .await;
 
-            treasurer.transfer_out(&buying.spent).await;
+            if let Some(t) = treasurer {
+                t.transfer_out(&buying.spent).await;
+            }
+
             return Ok(());
         }
 
@@ -312,7 +363,6 @@ mod tests {
             income: Decimal::from_f64(150.038939).unwrap(),
             income_after_commission: Decimal::from_f64(149.88890006).unwrap(),
             quantity: Decimal::from_f64(0.00349).unwrap(),
-            quantity_leave_after_transaction: Decimal::from_f64(0.0).unwrap(),
         };
         assert_eq!(buying, assert);
 
@@ -329,7 +379,6 @@ mod tests {
             income: Decimal::from_f64(150.038939).unwrap(),
             income_after_commission: Decimal::from_f64(149.88890006).unwrap(),
             quantity: Decimal::from_f64(0.00349).unwrap(),
-            quantity_leave_after_transaction: Decimal::from_f64(0.00000135).unwrap(),
         };
         assert_eq!(buying, assert);
 
@@ -346,7 +395,6 @@ mod tests {
             income: Decimal::from_f64(280.052256).unwrap(),
             income_after_commission: Decimal::from_f64(279.77220374).unwrap(),
             quantity: Decimal::from_f64(0.1056).unwrap(),
-            quantity_leave_after_transaction: Decimal::from_f64(0.0).unwrap(),
         };
         assert_eq!(buying, assert);
 
@@ -363,7 +411,6 @@ mod tests {
             income: Decimal::from_f64(278.726251).unwrap(),
             income_after_commission: Decimal::from_f64(278.44752475).unwrap(),
             quantity: Decimal::from_f64(0.1051).unwrap(),
-            quantity_leave_after_transaction: Decimal::from_f64(0.000036).unwrap(),
         };
         assert_eq!(buying, assert);
     }
@@ -432,7 +479,7 @@ mod tests {
         );
 
         for p in price.iter() {
-            let result = client.trap(p, &strategy, &treasurer).await;
+            let result = client.trap(p, &strategy, Some(&treasurer)).await;
             if let Err(e) = result {
                 println!("{e}");
             }
@@ -459,7 +506,7 @@ mod tests {
         );
 
         for p in price.iter() {
-            let result = client.trap(p, &strategy, &treasurer).await;
+            let result = client.trap(p, &strategy, Some(&treasurer)).await;
             if let Err(e) = result {
                 println!("{e}");
             }
@@ -486,7 +533,7 @@ mod tests {
         );
 
         for p in price.iter() {
-            let result = client.trap(p, &strategy, &treasurer).await;
+            let result = client.trap(p, &strategy, Some(&treasurer)).await;
             if let Err(e) = result {
                 println!("{e}");
             }
@@ -513,7 +560,7 @@ mod tests {
         );
 
         for p in price.iter() {
-            let result = client.trap(p, &strategy, &treasurer).await;
+            let result = client.trap(p, &strategy, Some(&treasurer)).await;
             if let Err(e) = result {
                 println!("{e}");
             }
@@ -540,7 +587,7 @@ mod tests {
         );
 
         for p in price.iter() {
-            let result = client.trap(p, &strategy, &treasurer).await;
+            let result = client.trap(p, &strategy, Some(&treasurer)).await;
             if let Err(e) = result {
                 println!("{e}");
             }
@@ -567,7 +614,7 @@ mod tests {
         );
 
         for p in price.iter() {
-            let result = client.trap(p, &strategy, &treasurer).await;
+            let result = client.trap(p, &strategy, Some(&treasurer)).await;
             if let Err(e) = result {
                 println!("{e}");
             }
@@ -587,7 +634,7 @@ mod tests {
         let strategy = Grid::new(to_decimal(100.0), positions);
 
         for p in price.iter() {
-            let result = client.trap(p, &strategy, &treasurer).await;
+            let result = client.trap(p, &strategy, Some(&treasurer)).await;
             if let Err(e) = result {
                 println!("{e}");
             }
@@ -605,7 +652,7 @@ mod tests {
         let strategy = Grid::new(to_decimal(100.0), positions);
 
         for p in strategy.predictive_lowest_profit_price().iter() {
-            let result = client.trap(p, &strategy, &treasurer).await;
+            let result = client.trap(p, &strategy, Some(&treasurer)).await;
             if let Err(e) = result {
                 println!("{e}");
             }
@@ -623,7 +670,7 @@ mod tests {
         let strategy = Grid::new(to_decimal(100.0), positions);
 
         for p in strategy.predictive_highest_profit_price().iter() {
-            let result = client.trap(p, &strategy, &treasurer).await;
+            let result = client.trap(p, &strategy, Some(&treasurer)).await;
             if let Err(e) = result {
                 println!("{e}");
             }

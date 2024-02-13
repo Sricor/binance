@@ -59,7 +59,7 @@ impl Spot {
         price * quantity
     }
 
-    pub fn is_allow_transaction(&self, price: &Price, quantity: &Quantity) -> bool {
+    pub fn is_reached_minimum_transaction_limit(&self, price: &Price, quantity: &Quantity) -> bool {
         if price * quantity > self.minimum_transaction_amount {
             return true;
         }
@@ -100,9 +100,6 @@ pub struct SpotSelling {
 
     /// Income gained after commission selling, also the actual income recorded
     pub income_after_commission: Amount,
-
-    /// Quantity leave after selling
-    pub quantity_leave_after_transaction: Quantity,
 }
 
 #[derive(Debug, PartialEq, Deserialize, Serialize)]
@@ -115,17 +112,23 @@ pub struct SpotTransaction {
 
     /// Return on investment (ROI)
     net_profit_margin: Decimal,
+
+    /// Quantity after transaction
+    leave_quantity: Quantity,
 }
 
 impl SpotTransaction {
     pub fn new(buying: SpotBuying, selling: SpotSelling) -> Self {
         let net_profit = selling.income_after_commission - buying.spent;
         let net_profit_margin = (net_profit / buying.spent).round_dp(6);
+        let leave_quantity = buying.quantity_after_commission - selling.quantity;
+
         Self {
             buying,
             selling,
             net_profit,
             net_profit_margin,
+            leave_quantity,
         }
     }
 
@@ -135,6 +138,10 @@ impl SpotTransaction {
 
     pub fn net_profit_margin(&self) -> &Decimal {
         &self.net_profit_margin
+    }
+
+    pub fn leave_quantity(&self) -> &Quantity {
+        &self.leave_quantity
     }
 }
 
@@ -183,7 +190,6 @@ mod tests {
             quantity: Decimal::from_f64(1.48).unwrap(),
             income: Decimal::from_f64(166.6184).unwrap(),
             income_after_commission: Decimal::from_f64(166.4517816).unwrap(),
-            quantity_leave_after_transaction: Decimal::from_f64(0.00851).unwrap(),
         }
     }
 
@@ -202,7 +208,6 @@ mod tests {
             quantity: Decimal::from_f64(2.58988).unwrap(),
             income: Decimal::from_f64(291.8535772).unwrap(),
             income_after_commission: Decimal::from_f64(291.56172362).unwrap(),
-            quantity_leave_after_transaction: Decimal::from_f64(0.0000075).unwrap(),
         }
     }
 
@@ -253,25 +258,25 @@ mod tests {
 
     #[test]
     fn test_is_allow_transaction() {
-        let allow = btc_spot().is_allow_transaction(
+        let allow = btc_spot().is_reached_minimum_transaction_limit(
             &Decimal::from_f64(10.0).unwrap(),
             &Decimal::from_f64(0.0025).unwrap(),
         );
         assert_eq!(allow, false);
 
-        let allow = btc_spot().is_allow_transaction(
+        let allow = btc_spot().is_reached_minimum_transaction_limit(
             &Decimal::from_f64(5.0).unwrap(),
             &Decimal::from_f64(2.0).unwrap(),
         );
         assert_eq!(allow, true);
 
-        let allow = btc_spot().is_allow_transaction(
+        let allow = btc_spot().is_reached_minimum_transaction_limit(
             &Decimal::from_f64(30.5).unwrap(),
             &Decimal::from_f64(2.0).unwrap(),
         );
 
         assert_eq!(allow, true);
-        let allow = btc_spot().is_allow_transaction(
+        let allow = btc_spot().is_reached_minimum_transaction_limit(
             &Decimal::from_f64(100.5).unwrap(),
             &Decimal::from_f64(0.00025).unwrap(),
         );
@@ -320,6 +325,21 @@ mod tests {
         assert_eq!(
             transaction.net_profit_margin().clone(),
             Decimal::from_f64(-0.439304).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_transaction_leave_quantity() {
+        let transaction = SpotTransaction::new(buying_spot_one(), selling_spot_one());
+        assert_eq!(
+            transaction.leave_quantity().clone(),
+            Decimal::from_f64(0.00851).unwrap()
+        );
+
+        let transaction = SpotTransaction::new(buying_spot_two(), selling_spot_two());
+        assert_eq!(
+            transaction.leave_quantity().clone(),
+            Decimal::from_f64(0.0000075).unwrap()
         );
     }
 }
