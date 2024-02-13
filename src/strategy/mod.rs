@@ -8,7 +8,7 @@ pub mod strategy {
 
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use std::future::Future;
+use std::{error::Error, future::Future};
 
 use crate::noun::*;
 
@@ -72,23 +72,25 @@ pub trait Strategy {
 }
 
 pub trait Master {
-    async fn trap<S, T>(
+    type Item;
+
+    fn trap<S, T>(
         &self,
         price: &Price,
         strategy: &S,
         treasurer: &T,
-    ) -> Result<(), impl std::error::Error>
+    ) -> impl std::future::Future<Output = Result<Self::Item, impl Error>> + Send
     where
-        S: Strategy + Send,
-        T: Treasurer + Send;
+        S: Strategy + Send + Sync,
+        T: Treasurer + Send + Sync;
 }
 
 pub trait Treasurer {
-    fn balance(&self) -> impl std::future::Future<Output = Decimal> + Send;
+    fn balance(&self) -> impl Future<Output = Decimal> + Send;
 
     // income
-    fn transfer_in(&self, amount: &Amount) -> impl std::future::Future<Output = ()> + Send;
+    fn transfer_in(&self, amount: &Amount) -> impl Future<Output = ()> + Send;
 
     // spent
-    fn transfer_out(&self, amount: &Amount) -> impl std::future::Future<Output = ()> + Send;
+    fn transfer_out(&self, amount: &Amount) -> impl Future<Output = ()> + Send;
 }

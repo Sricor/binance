@@ -1,4 +1,4 @@
-use binance::{api::Binance, futures::market::FuturesMarket};
+use binance::{api::Binance, market::Market};
 use rust_decimal::prelude::FromPrimitive;
 
 use super::error::MarketClientError;
@@ -7,12 +7,12 @@ use crate::noun::*;
 type MarketClientResult<T> = Result<T, MarketClientError>;
 
 pub struct MarketClient {
-    client: FuturesMarket,
+    client: Market,
 }
 
 impl MarketClient {
     pub fn new() -> Self {
-        let client = FuturesMarket::new(None, None);
+        let client = Market::new(None, None);
         Self { client }
     }
 

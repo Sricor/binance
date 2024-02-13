@@ -1,4 +1,7 @@
-use binance::{api::Binance, futures::account::FuturesAccount};
+use binance::{
+    account::{Account, OrderRequest},
+    api::Binance,
+};
 use rust_decimal::prelude::ToPrimitive;
 
 use super::{error::SpotClientError, Spot, SpotBuying, SpotSelling};
@@ -14,7 +17,7 @@ pub struct SpotClient {
     spot: Spot,
     option: Option<SpotClientOption>,
 
-    client: FuturesAccount,
+    client: Account,
 }
 
 impl SpotClient {
@@ -24,7 +27,7 @@ impl SpotClient {
         spot: Spot,
         option: Option<SpotClientOption>,
     ) -> Self {
-        let client = FuturesAccount::new(Some(api_key.clone()), Some(secret_key.clone()));
+        let client = Account::new(Some(api_key.clone()), Some(secret_key.clone()));
         Self {
             spot,
             option,
@@ -66,8 +69,16 @@ impl SpotClient {
         if self.is_production() {
             let buy = self
                 .client
-                .market_buy(self.spot.symbol(), quantity.to_f64().unwrap())
+                .place_order(OrderRequest {
+                    symbol: self.spot.symbol().clone(),
+                    side: binance::rest_model::OrderSide::Buy,
+                    order_type: binance::rest_model::OrderType::Market,
+                    quantity: Some(quantity.to_f64().unwrap()),
+                    price: None,
+                    ..OrderRequest::default()
+                })
                 .await;
+
             if let Err(e) = buy {
                 return Err(SpotClientError::Trading(e.to_string()));
             }
@@ -97,8 +108,16 @@ impl SpotClient {
         if self.is_production() {
             let sell = self
                 .client
-                .market_sell(self.spot.symbol(), quantity.to_f64().unwrap())
+                .place_order(OrderRequest {
+                    symbol: self.spot.symbol().clone(),
+                    side: binance::rest_model::OrderSide::Sell,
+                    order_type: binance::rest_model::OrderType::Market,
+                    quantity: Some(quantity.to_f64().unwrap()),
+                    price: None,
+                    ..OrderRequest::default()
+                })
                 .await;
+
             if let Err(e) = sell {
                 return Err(SpotClientError::Trading(e.to_string()));
             }
@@ -110,10 +129,17 @@ impl SpotClient {
 
 #[allow(refining_impl_trait)]
 impl Master for SpotClient {
-    async fn trap<S, T>(&self, price: &Price, strategy: &S, treasurer: &T) -> SpotClientResult<()>
+    type Item = ();
+
+    async fn trap<S, T>(
+        &self,
+        price: &Price,
+        strategy: &S,
+        treasurer: &T,
+    ) -> Result<Self::Item, impl std::error::Error>
     where
-        S: Strategy + Send,
-        T: Treasurer + Send,
+        S: Strategy + Send + Sync,
+        T: Treasurer + Send + Sync,
     {
         if strategy.is_completed() {
             return Err(SpotClientError::Strategy(String::from(
