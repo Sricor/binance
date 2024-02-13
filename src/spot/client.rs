@@ -17,7 +17,7 @@ pub struct SpotClient {
     spot: Spot,
     option: Option<SpotClientOption>,
 
-    client: Account,
+    pub client: Account,
 }
 
 impl SpotClient {
