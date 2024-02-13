@@ -466,6 +466,28 @@ mod tests {
         ]
     }
 
+    fn predict_price_five() -> Vec<Price> {
+        vec![
+            to_decimal(60.00),
+            to_decimal(60.00),
+            to_decimal(60.00),
+            to_decimal(60.00),
+            to_decimal(60.00),
+            to_decimal(60.00),
+        ]
+    }
+
+    fn predict_price_six() -> Vec<Price> {
+        vec![
+            to_decimal(95.00),
+            to_decimal(95.00),
+            to_decimal(95.00),
+            to_decimal(95.00),
+            to_decimal(95.00),
+            to_decimal(95.00),
+        ]
+    }
+
     #[tokio::test]
     async fn test_strategy_trap_percentage_one() {
         let price = predict_price_one();
@@ -678,5 +700,33 @@ mod tests {
 
         assert_eq!(strategy.is_completed(), false);
         assert_eq!(treasurer.balance().await, to_decimal(25.25451036));
+    }
+
+    #[tokio::test]
+    async fn test_strategy_trap_grid_double_trading() {
+        let client = new_client(btc_spot());
+        let treasurer = Prosperity::new(None);
+        let positions = BoundPosition::with_copies(Bound(to_decimal(30.75), to_decimal(175.35)), 6);
+        let strategy = Grid::new(to_decimal(100.0), positions);
+
+        for p in predict_price_five().iter() {
+            let result = client.trap(p, &strategy, Some(&treasurer)).await;
+            if let Err(e) = result {
+                println!("{e}");
+            }
+        }
+
+        assert_eq!(strategy.is_completed(), false);
+        assert_eq!(treasurer.balance().await, to_decimal(-16.66620));
+
+        for p in predict_price_six().iter() {
+            let result = client.trap(p, &strategy, Some(&treasurer)).await;
+            if let Err(e) = result {
+                println!("{e}");
+            }
+        }
+
+        assert_eq!(strategy.is_completed(), false);
+        assert_eq!(treasurer.balance().await, to_decimal(9.66898845));
     }
 }

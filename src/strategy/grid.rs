@@ -119,11 +119,20 @@ impl Grid {
         result
     }
 
-    pub fn find_bound_position(&self, price: &Price) -> Option<&BoundPosition> {
+    pub fn find_buying_bound_position(&self, price: &Price) -> Option<&BoundPosition> {
         let index = self
             .positions
             .iter()
-            .position(|e| e.buying.is_within(price) || e.selling.is_within(price))?;
+            .position(|e| e.buying.is_within(price))?;
+
+        Some(&self.positions[index])
+    }
+
+    pub fn find_selling_bound_position(&self, price: &Price) -> Option<&BoundPosition> {
+        let index = self
+            .positions
+            .iter()
+            .position(|e| e.selling.is_within(price))?;
 
         Some(&self.positions[index])
     }
@@ -135,7 +144,7 @@ impl Grid {
 
 impl Strategy for Grid {
     async fn predictive_buy(&self, price: &Price) -> Option<Amount> {
-        let bound = self.find_bound_position(price)?;
+        let bound = self.find_buying_bound_position(price)?;
         let position = bound.position.lock();
 
         if let Position::None = &*position {
@@ -146,7 +155,7 @@ impl Strategy for Grid {
     }
 
     async fn predictive_sell(&self, price: &Price) -> Option<Vec<Order>> {
-        let bound = self.find_bound_position(price)?;
+        let bound = self.find_selling_bound_position(price)?;
         let position = bound.position.lock();
 
         if let Position::Stock(v) = &*position {
@@ -159,14 +168,14 @@ impl Strategy for Grid {
     async fn update_position(&self, side: &PositionSide) -> () {
         match side {
             PositionSide::Increase(v) => {
-                let bound = self.find_bound_position(&v.price).unwrap();
+                let bound = self.find_buying_bound_position(&v.price).unwrap();
 
                 // TODO: is stock?
                 let mut position = bound.position.lock();
                 *position = Position::Stock(v.clone());
             }
             PositionSide::Decrease(v) => {
-                let bound = self.find_bound_position(&v.price).unwrap();
+                let bound = self.find_buying_bound_position(&v.price).unwrap();
 
                 // TODO: is none?
                 let mut position = bound.position.lock();
