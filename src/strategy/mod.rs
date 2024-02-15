@@ -49,6 +49,24 @@ pub enum Position {
     None,
 }
 
+impl Position {
+    pub fn is_none(&self) -> bool {
+        match &self {
+            Self::None => true,
+
+            _ => false,
+        }
+    }
+
+    pub fn is_stock(&self) -> bool {
+        match &self {
+            Self::Stock(_) => true,
+
+            _ => false,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum PositionSide {
     /// Complete buying order

@@ -2,7 +2,7 @@ use std::sync::Mutex;
 
 use rust_decimal::prelude::FromPrimitive;
 use serde::{Deserialize, Serialize};
-use tracing::{instrument, trace};
+use tracing::{instrument, trace, warn};
 
 use super::{Order, Position, PositionSide, Strategy};
 use crate::noun::*;
@@ -167,6 +167,17 @@ impl Grid {
         &self.positions
     }
 
+    pub fn is_none_position(&self) -> bool {
+        for p in self.positions.iter() {
+            let position = p.position.lock().unwrap();
+            if !position.is_none() {
+                return false;
+            }
+        }
+
+        true
+    }
+
     pub fn is_reach_stop_loss(&self, price: &Price) -> bool {
         if let Some(stop) = &self.options.stop_loss {
             if price <= &(self.bound.low() * (Decimal::ONE - stop)) {
@@ -222,19 +233,33 @@ impl Strategy for Grid {
     #[instrument(skip(self))]
     async fn update_position(&self, side: &PositionSide) -> () {
         match side {
-            PositionSide::Increase(v) => {
-                let bound = self.find_buying_bound_position(&v.price).unwrap();
-
-                // TODO: is stock?
-                let mut position = bound.position.lock().unwrap();
-                *position = Position::Stock(v.clone());
+            PositionSide::Increase(order) => {
+                let find_bound = self.find_buying_bound_position(&order.price);
+                match find_bound {
+                    Some(v) => {
+                        // TODO: is stock?
+                        let mut position = v.position.lock().unwrap();
+                        *position = Position::Stock(order.clone());
+                    }
+                    None => warn!(
+                        "the order {:?} price is not within the grid buying bound",
+                        order
+                    ),
+                }
             }
-            PositionSide::Decrease(v) => {
-                let bound = self.find_buying_bound_position(&v.price).unwrap();
-
-                // TODO: is none?
-                let mut position = bound.position.lock().unwrap();
-                *position = Position::None;
+            PositionSide::Decrease(order) => {
+                let find_bound = self.find_buying_bound_position(&order.price);
+                match find_bound {
+                    Some(v) => {
+                        // TODO: is none?
+                        let mut position = v.position.lock().unwrap();
+                        *position = Position::None;
+                    }
+                    None => warn!(
+                        "the order {:?} price is not within the grid buying bound",
+                        order
+                    ),
+                }
             }
         };
     }
@@ -404,6 +429,7 @@ mod tests {
             Some(options),
         );
 
+        assert_eq!(grid.is_none_position(), true);
         assert_eq!(grid.is_reach_stop_loss(&decimal(49.5)), false);
         assert_eq!(grid.is_reach_stop_loss(&decimal(48.0)), false);
         assert_eq!(grid.is_reach_stop_loss(&decimal(47.5)), true);
@@ -420,6 +446,7 @@ mod tests {
             .iter_mut()
             .for_each(|e| *e.position.lock().unwrap() = Position::Stock(order.clone()));
 
+        assert_eq!(grid.is_none_position(), false);
         assert_eq!(grid.predictive_selling(&decimal(50.0)).await, None);
         assert_eq!(
             grid.predictive_selling(&decimal(47.5)).await,

@@ -72,7 +72,7 @@ impl Spot {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SpotBuying {
     /// Buying price
     pub price: Price,
@@ -87,7 +87,7 @@ pub struct SpotBuying {
     pub quantity_after_commission: Quantity,
 }
 
-#[derive(Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SpotSelling {
     /// Selling price
     pub price: Price,
@@ -102,7 +102,7 @@ pub struct SpotSelling {
     pub income_after_commission: Amount,
 }
 
-#[derive(Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SpotTransaction {
     buying: SpotBuying,
     selling: SpotSelling,

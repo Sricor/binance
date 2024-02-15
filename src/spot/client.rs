@@ -3,6 +3,7 @@ use binance::{
     api::Binance,
 };
 use rust_decimal::prelude::ToPrimitive;
+use serde::{Deserialize, Serialize};
 
 use super::{error::SpotClientError, Spot, SpotBuying, SpotSelling};
 use crate::{
@@ -175,9 +176,15 @@ impl SpotClient {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum SpotTransactionSide {
+    Buying(SpotBuying),
+    Selling(SpotSelling),
+}
+
 #[allow(refining_impl_trait)]
 impl Master for SpotClient {
-    type Item = ();
+    type Item = Option<Vec<SpotTransactionSide>>;
 
     async fn trap<S, T>(
         &self,
@@ -195,46 +202,47 @@ impl Master for SpotClient {
             )));
         }
 
-        if let Some(sell_list) = strategy.predictive_selling(price).await {
-            if !sell_list.is_empty() {
-                for o in sell_list.iter() {
-                    let selling = self.sell(price, o.quantity()).await?;
+        if let Some(selling_order_list) = strategy.predictive_selling(price).await {
+            if !selling_order_list.is_empty() {
+                let mut result = Vec::with_capacity(selling_order_list.len() + 1);
+                for order in selling_order_list.into_iter() {
+                    let selling = self.sell(price, order.quantity()).await?;
+                    let positsion = PositionSide::Decrease(order);
 
                     // TODO: return leave quantity
-                    strategy
-                        .update_position(&PositionSide::Decrease(o.clone()))
-                        .await;
+                    strategy.update_position(&positsion).await;
 
                     if let Some(t) = treasurer {
                         t.transfer_in(&selling.income_after_commission).await;
                     }
+
+                    result.push(SpotTransactionSide::Selling(selling))
                 }
 
-                return Ok(());
+                return Ok(Some(result));
             }
         }
 
-        if let Some(buy_amount) = strategy.predictive_buying(price).await {
-            let buy_quantity = self.spot.buying_quantity_by_amount(price, &buy_amount);
-            let buying = self.buy(price, &buy_quantity).await?;
+        if let Some(buying_amount) = strategy.predictive_buying(price).await {
+            let buying_quantity = self.spot.buying_quantity_by_amount(price, &buying_amount);
+            let buying = self.buy(price, &buying_quantity).await?;
 
-            let order = Order::new(
+            let position = PositionSide::Increase(Order::new(
                 price.clone(),
                 buying.spent,
                 buying.quantity_after_commission,
-            );
-            strategy
-                .update_position(&PositionSide::Increase(order))
-                .await;
+            ));
+            strategy.update_position(&position).await;
 
             if let Some(t) = treasurer {
                 t.transfer_out(&buying.spent).await;
             }
 
-            return Ok(());
+            let result = vec![SpotTransactionSide::Buying(buying)];
+            return Ok(Some(result));
         }
 
-        Ok(())
+        Ok(None)
     }
 }
 
