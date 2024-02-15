@@ -41,7 +41,7 @@ impl Percentage {
 }
 
 impl Strategy for Percentage {
-    async fn predictive_buy(&self, price: &Price) -> Option<Amount> {
+    async fn predictive_buying(&self, price: &Price) -> Option<Amount> {
         if self.is_completed() {
             return None;
         }
@@ -59,7 +59,7 @@ impl Strategy for Percentage {
         None
     }
 
-    async fn predictive_sell(&self, price: &Price) -> Option<Vec<Order>> {
+    async fn predictive_selling(&self, price: &Price) -> Option<Vec<Order>> {
         if self.is_completed() {
             return None;
         }

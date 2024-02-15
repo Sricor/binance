@@ -60,10 +60,10 @@ pub enum PositionSide {
 
 pub trait Strategy {
     // Buy signal, return Some (Amount) when buying is required
-    fn predictive_buy(&self, price: &Price) -> impl Future<Output = Option<Amount>> + Send;
+    fn predictive_buying(&self, price: &Price) -> impl Future<Output = Option<Amount>> + Send;
 
     // Sell signal, return Some (Vec<Position>) when selling is required
-    fn predictive_sell(&self, price: &Price) -> impl Future<Output = Option<Vec<Order>>> + Send;
+    fn predictive_selling(&self, price: &Price) -> impl Future<Output = Option<Vec<Order>>> + Send;
 
     // update strategic positions after passing a trade
     fn update_position(&self, side: &PositionSide) -> impl Future<Output = ()> + Send;

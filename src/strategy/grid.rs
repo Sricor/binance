@@ -1,6 +1,8 @@
-use parking_lot::Mutex;
+use std::sync::Mutex;
+
 use rust_decimal::prelude::FromPrimitive;
 use serde::{Deserialize, Serialize};
+use tracing::{instrument, trace};
 
 use super::{Order, Position, PositionSide, Strategy};
 use crate::noun::*;
@@ -34,7 +36,7 @@ impl Bound {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct BoundPosition {
     buying: Bound,
     selling: Bound,
@@ -81,7 +83,7 @@ impl BoundPosition {
     }
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Grid {
     investment: Amount,
     positions: Vec<BoundPosition>,
@@ -125,7 +127,10 @@ impl Grid {
             .iter()
             .position(|e| e.buying.is_within(price))?;
 
-        Some(&self.positions[index])
+        let bound = &self.positions[index];
+        trace!("found the buying bound {:?}", bound);
+
+        Some(bound)
     }
 
     pub fn find_selling_bound_position(&self, price: &Price) -> Option<&BoundPosition> {
@@ -134,7 +139,10 @@ impl Grid {
             .iter()
             .position(|e| e.selling.is_within(price))?;
 
-        Some(&self.positions[index])
+        let bound = &self.positions[index];
+        trace!("found the selling bound {:?}", bound);
+
+        Some(bound)
     }
 
     pub fn positions(&self) -> &Vec<BoundPosition> {
@@ -143,42 +151,48 @@ impl Grid {
 }
 
 impl Strategy for Grid {
-    async fn predictive_buy(&self, price: &Price) -> Option<Amount> {
+    #[instrument(skip(self))]
+    async fn predictive_buying(&self, price: &Price) -> Option<Amount> {
         let bound = self.find_buying_bound_position(price)?;
-        let position = bound.position.lock();
+        let position = bound.position.lock().unwrap();
 
         if let Position::None = &*position {
-            return Some(self.investment / Decimal::from(self.positions.len() + 1));
+            let target = self.investment / Decimal::from(self.positions.len() + 1);
+            trace!("predictive buy {} amount", target);
+            return Some(target);
         }
 
         None
     }
 
-    async fn predictive_sell(&self, price: &Price) -> Option<Vec<Order>> {
+    #[instrument(skip(self))]
+    async fn predictive_selling(&self, price: &Price) -> Option<Vec<Order>> {
         let bound = self.find_selling_bound_position(price)?;
-        let position = bound.position.lock();
+        let position = bound.position.lock().unwrap();
 
         if let Position::Stock(v) = &*position {
+            trace!("predictive sell {:?}", v);
             return Some(vec![v.clone()]);
         }
 
         None
     }
 
+    #[instrument(skip(self))]
     async fn update_position(&self, side: &PositionSide) -> () {
         match side {
             PositionSide::Increase(v) => {
                 let bound = self.find_buying_bound_position(&v.price).unwrap();
 
                 // TODO: is stock?
-                let mut position = bound.position.lock();
+                let mut position = bound.position.lock().unwrap();
                 *position = Position::Stock(v.clone());
             }
             PositionSide::Decrease(v) => {
                 let bound = self.find_buying_bound_position(&v.price).unwrap();
 
                 // TODO: is none?
-                let mut position = bound.position.lock();
+                let mut position = bound.position.lock().unwrap();
                 *position = Position::None;
             }
         };
@@ -194,15 +208,6 @@ mod tests {
     impl PartialEq for BoundPosition {
         fn eq(&self, other: &Self) -> bool {
             self.buying == other.buying && self.selling == other.selling
-        }
-    }
-
-    impl std::fmt::Debug for BoundPosition {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.debug_struct("BoundPosition")
-                .field("buying", &self.buying)
-                .field("selling", &self.selling)
-                .finish()
         }
     }
 
@@ -339,10 +344,10 @@ mod tests {
             timestamp: 0,
         });
         {
-            let mut lock = positions[0].position().lock();
+            let mut lock = positions[0].position().lock().unwrap();
             *lock = target.clone();
         }
 
-        assert_eq!(*(positions[0].position().lock()), target);
+        assert_eq!(*(positions[0].position().lock().unwrap()), target);
     }
 }

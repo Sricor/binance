@@ -195,7 +195,7 @@ impl Master for SpotClient {
             )));
         }
 
-        if let Some(sell_list) = strategy.predictive_sell(price).await {
+        if let Some(sell_list) = strategy.predictive_selling(price).await {
             if !sell_list.is_empty() {
                 for o in sell_list.iter() {
                     let selling = self.sell(price, o.quantity()).await?;
@@ -214,7 +214,7 @@ impl Master for SpotClient {
             }
         }
 
-        if let Some(buy_amount) = strategy.predictive_buy(price).await {
+        if let Some(buy_amount) = strategy.predictive_buying(price).await {
             let buy_quantity = self.spot.buying_quantity_by_amount(price, &buy_amount);
             let buying = self.buy(price, &buy_quantity).await?;
 
@@ -241,6 +241,7 @@ impl Master for SpotClient {
 #[cfg(test)]
 mod tests {
     use rust_decimal::prelude::FromPrimitive;
+    use tracing_test::traced_test;
 
     use crate::{
         strategy::strategy::{Bound, BoundPosition, Grid, Percentage},
@@ -282,6 +283,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn test_dev_buy() {
         let client = new_client(btc_spot());
         let buying = client
@@ -349,6 +351,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn test_dev_sell() {
         let client = new_client(btc_spot());
         let buying = client
@@ -489,6 +492,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn test_strategy_trap_percentage_one() {
         let price = predict_price_one();
         let client = new_client(btc_spot());
@@ -516,6 +520,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn test_strategy_trap_percentage_two() {
         let price = predict_price_two();
         let client = new_client(btc_spot());
@@ -543,6 +548,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn test_strategy_trap_percentage_three() {
         let price = predict_price_three();
         let client = new_client(btc_spot());
@@ -570,6 +576,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn test_strategy_trap_percentage_stop_loss() {
         let price = predict_price_two();
         let client = new_client(btc_spot());
@@ -597,6 +604,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn test_strategy_trap_percentage_start_buying() {
         let price = predict_price_two();
         let client = new_client(btc_spot());
@@ -624,6 +632,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn test_strategy_trap_percentage_start_buying_two() {
         let price = predict_price_two();
         let client = new_client(btc_spot());
@@ -648,6 +657,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn test_strategy_trap_grid() {
         let price = predict_price_four();
         let client = new_client(btc_spot());
@@ -667,6 +677,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn test_strategy_trap_grid_predictive_lowest_profit_price() {
         let client = new_client(btc_spot());
         let treasurer = Prosperity::new(None);
@@ -685,6 +696,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn test_strategy_trap_grid_predictive_highest_profit_price() {
         let client = new_client(btc_spot());
         let treasurer = Prosperity::new(None);
@@ -703,6 +715,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn test_strategy_trap_grid_double_trading() {
         let client = new_client(btc_spot());
         let treasurer = Prosperity::new(None);
