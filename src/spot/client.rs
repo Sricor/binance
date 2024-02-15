@@ -244,7 +244,7 @@ mod tests {
     use tracing_test::traced_test;
 
     use crate::{
-        strategy::strategy::{Bound, BoundPosition, Grid, Percentage},
+        strategy::strategy::{Grid, Percentage},
         treasurer::Prosperity,
     };
 
@@ -662,8 +662,12 @@ mod tests {
         let price = predict_price_four();
         let client = new_client(btc_spot());
         let treasurer = Prosperity::new(None);
-        let positions = BoundPosition::with_copies(Bound(to_decimal(50.0), to_decimal(90.0)), 4);
-        let strategy = Grid::new(to_decimal(100.0), positions);
+        let strategy = Grid::new(
+            to_decimal(100.0),
+            (to_decimal(50.0), to_decimal(90.0)),
+            4,
+            None,
+        );
 
         for p in price.iter() {
             let result = client.trap(p, &strategy, Some(&treasurer)).await;
@@ -681,8 +685,12 @@ mod tests {
     async fn test_strategy_trap_grid_predictive_lowest_profit_price() {
         let client = new_client(btc_spot());
         let treasurer = Prosperity::new(None);
-        let positions = BoundPosition::with_copies(Bound(to_decimal(50.0), to_decimal(90.0)), 4);
-        let strategy = Grid::new(to_decimal(100.0), positions);
+        let strategy = Grid::new(
+            to_decimal(100.0),
+            (to_decimal(50.0), to_decimal(90.0)),
+            4,
+            None,
+        );
 
         for p in strategy.predictive_lowest_profit_price().iter() {
             let result = client.trap(p, &strategy, Some(&treasurer)).await;
@@ -700,8 +708,12 @@ mod tests {
     async fn test_strategy_trap_grid_predictive_highest_profit_price() {
         let client = new_client(btc_spot());
         let treasurer = Prosperity::new(None);
-        let positions = BoundPosition::with_copies(Bound(to_decimal(50.0), to_decimal(90.0)), 4);
-        let strategy = Grid::new(to_decimal(100.0), positions);
+        let strategy = Grid::new(
+            to_decimal(100.0),
+            (to_decimal(50.0), to_decimal(90.0)),
+            4,
+            None,
+        );
 
         for p in strategy.predictive_highest_profit_price().iter() {
             let result = client.trap(p, &strategy, Some(&treasurer)).await;
@@ -719,8 +731,12 @@ mod tests {
     async fn test_strategy_trap_grid_double_trading() {
         let client = new_client(btc_spot());
         let treasurer = Prosperity::new(None);
-        let positions = BoundPosition::with_copies(Bound(to_decimal(30.75), to_decimal(175.35)), 6);
-        let strategy = Grid::new(to_decimal(100.0), positions);
+        let strategy = Grid::new(
+            to_decimal(100.0),
+            (to_decimal(30.75), to_decimal(175.35)),
+            6,
+            None,
+        );
 
         for p in predict_price_five().iter() {
             let result = client.trap(p, &strategy, Some(&treasurer)).await;
