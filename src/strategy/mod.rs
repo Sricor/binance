@@ -10,7 +10,30 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::{error::Error, future::Future};
 
-use crate::noun::*;
+use crate::{common::time::timestamp_millis, noun::*};
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct PriceSignal {
+    value: Price,
+    timestamp: i64,
+}
+
+impl PriceSignal {
+    pub fn new(price: Price) -> Self {
+        Self {
+            value: price,
+            timestamp: timestamp_millis(),
+        }
+    }
+
+    pub fn value(&self) -> &Price {
+        &self.value
+    }
+
+    pub fn timestamp(&self) -> i64 {
+        self.timestamp
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct Order {
@@ -78,10 +101,14 @@ pub enum PositionSide {
 
 pub trait Strategy {
     // Buy signal, return Some (Amount) when buying is required
-    fn predictive_buying(&self, price: &Price) -> impl Future<Output = Option<Amount>> + Send;
+    fn predictive_buying(&self, price: &PriceSignal)
+        -> impl Future<Output = Option<Amount>> + Send;
 
     // Sell signal, return Some (Vec<Position>) when selling is required
-    fn predictive_selling(&self, price: &Price) -> impl Future<Output = Option<Vec<Order>>> + Send;
+    fn predictive_selling(
+        &self,
+        price: &PriceSignal,
+    ) -> impl Future<Output = Option<Vec<Order>>> + Send;
 
     // update strategic positions after passing a trade
     fn update_position(&self, side: &PositionSide) -> impl Future<Output = ()> + Send;
@@ -94,7 +121,7 @@ pub trait Master {
 
     fn trap<S, T>(
         &self,
-        price: &Price,
+        price: &PriceSignal,
         strategy: &S,
         treasurer: Option<&T>,
     ) -> impl Future<Output = Result<Self::Item, impl Error>> + Send

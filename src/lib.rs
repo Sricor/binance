@@ -1,3 +1,5 @@
+mod common;
+
 pub mod market;
 pub mod spot;
 pub mod strategy;

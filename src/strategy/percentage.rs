@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use tokio::sync::Mutex;
 
-use super::{Order, PositionSide, Strategy};
+use super::{Order, PositionSide, PriceSignal, Strategy};
 use crate::noun::*;
 
 pub struct Percentage {
@@ -41,13 +41,13 @@ impl Percentage {
 }
 
 impl Strategy for Percentage {
-    async fn predictive_buying(&self, price: &Price) -> Option<Amount> {
+    async fn predictive_buying(&self, price: &PriceSignal) -> Option<Amount> {
         if self.is_completed() {
             return None;
         }
 
         if let Some(start_price) = self.start_buying_price {
-            if price < &start_price {
+            if price.value() < &start_price {
                 return None;
             }
         }
@@ -59,7 +59,7 @@ impl Strategy for Percentage {
         None
     }
 
-    async fn predictive_selling(&self, price: &Price) -> Option<Vec<Order>> {
+    async fn predictive_selling(&self, price: &PriceSignal) -> Option<Vec<Order>> {
         if self.is_completed() {
             return None;
         }
@@ -68,12 +68,12 @@ impl Strategy for Percentage {
         let result = position
             .iter()
             .filter_map(|e| {
-                if price > &(e.price * (Decimal::ONE + self.target_percent)) {
+                if price.value() > &(e.price * (Decimal::ONE + self.target_percent)) {
                     return Some(e.clone());
                 };
 
                 if let Some(stop_loss_percent) = self.stop_percent {
-                    if price < &(e.price * (Decimal::ONE + stop_loss_percent)) {
+                    if price.value() < &(e.price * (Decimal::ONE + stop_loss_percent)) {
                         return Some(e.clone());
                     }
                 }

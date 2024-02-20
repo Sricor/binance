@@ -2,7 +2,7 @@ use binance::{api::Binance, market::Market};
 use rust_decimal::prelude::FromPrimitive;
 
 use super::error::MarketClientError;
-use crate::noun::*;
+use crate::{noun::*, strategy::PriceSignal};
 
 type MarketClientResult<T> = Result<T, MarketClientError>;
 
@@ -16,13 +16,17 @@ impl MarketClient {
         Self { client }
     }
 
-    pub async fn price(&self, symbol: &Symbol) -> MarketClientResult<Price> {
+    pub async fn price(&self, symbol: &Symbol) -> MarketClientResult<PriceSignal> {
         match self.client.get_price(symbol).await {
             Ok(v) => {
                 if let Some(price) = Decimal::from_f64(v.price) {
-                    return Ok(price);
+                    let result = PriceSignal::new(price);
+
+                    Ok(result)
                 } else {
-                    Err(MarketClientError::Decimal(v.price.to_string()))
+                    let result = MarketClientError::Decimal(v.price.to_string());
+
+                    Err(result)
                 }
             }
             Err(e) => Err(MarketClientError::Client(e.to_string())),

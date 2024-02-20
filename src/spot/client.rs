@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use super::{error::SpotClientError, Spot, SpotBuying, SpotSelling};
 use crate::{
     noun::*,
-    strategy::{Master, Order, PositionSide, Strategy, Treasurer},
+    strategy::{Master, Order, PositionSide, PriceSignal, Strategy, Treasurer},
 };
 
 type SpotClientResult<T> = Result<T, SpotClientError>;
@@ -188,7 +188,7 @@ impl Master for SpotClient {
 
     async fn trap<S, T>(
         &self,
-        price: &Price,
+        price: &PriceSignal,
         strategy: &S,
         treasurer: Option<&T>,
     ) -> SpotClientResult<Self::Item>
@@ -206,7 +206,7 @@ impl Master for SpotClient {
             if !selling_order_list.is_empty() {
                 let mut result = Vec::with_capacity(selling_order_list.len() + 1);
                 for order in selling_order_list.into_iter() {
-                    let selling = self.sell(price, order.quantity()).await?;
+                    let selling = self.sell(price.value(), order.quantity()).await?;
                     let positsion = PositionSide::Decrease(order);
 
                     // TODO: return leave quantity
@@ -224,11 +224,13 @@ impl Master for SpotClient {
         }
 
         if let Some(buying_amount) = strategy.predictive_buying(price).await {
-            let buying_quantity = self.spot.buying_quantity_by_amount(price, &buying_amount);
-            let buying = self.buy(price, &buying_quantity).await?;
+            let buying_quantity = self
+                .spot
+                .buying_quantity_by_amount(price.value(), &buying_amount);
+            let buying = self.buy(price.value(), &buying_quantity).await?;
 
             let position = PositionSide::Increase(Order::new(
-                price.clone(),
+                price.value().clone(),
                 buying.spent,
                 buying.quantity_after_commission,
             ));
@@ -257,6 +259,14 @@ mod tests {
     };
 
     use super::*;
+
+    fn price(value: f64) -> PriceSignal {
+        PriceSignal::new(decimal(value))
+    }
+
+    fn decimal(value: f64) -> Decimal {
+        Decimal::from_f64(value).unwrap()
+    }
 
     fn to_decimal(value: f64) -> Decimal {
         Decimal::from_f64(value).unwrap()
@@ -426,54 +436,54 @@ mod tests {
         assert_eq!(buying, assert);
     }
 
-    fn predict_price_one() -> Vec<Price> {
+    fn predict_price_one() -> Vec<PriceSignal> {
         vec![
-            Decimal::from_f64(100.0).unwrap(),
-            Decimal::from_f64(101.0).unwrap(),
-            Decimal::from_f64(101.5).unwrap(),
-            Decimal::from_f64(102.3).unwrap(),
-            Decimal::from_f64(100.9).unwrap(),
-            Decimal::from_f64(99.58).unwrap(),
+            price(100.0),
+            price(101.0),
+            price(101.5),
+            price(102.3),
+            price(100.9),
+            price(99.58),
         ]
     }
 
-    fn predict_price_two() -> Vec<Price> {
+    fn predict_price_two() -> Vec<PriceSignal> {
         vec![
-            Decimal::from_f64(100.0).unwrap(),
-            Decimal::from_f64(99.23).unwrap(),
-            Decimal::from_f64(98.52).unwrap(),
-            Decimal::from_f64(97.45).unwrap(),
-            Decimal::from_f64(96.67).unwrap(),
-            Decimal::from_f64(93.23).unwrap(),
-            Decimal::from_f64(92.95).unwrap(),
-            Decimal::from_f64(90.94).unwrap(),
+            price(100.0),
+            price(99.23),
+            price(98.52),
+            price(97.45),
+            price(96.67),
+            price(93.23),
+            price(92.95),
+            price(90.94),
         ]
     }
 
-    fn predict_price_three() -> Vec<Price> {
+    fn predict_price_three() -> Vec<PriceSignal> {
         vec![
-            Decimal::from_f64(100.0).unwrap(),
-            Decimal::from_f64(101.0).unwrap(),
-            Decimal::from_f64(103.5).unwrap(),
-            Decimal::from_f64(106.9).unwrap(),
-            Decimal::from_f64(108.9).unwrap(),
-            Decimal::from_f64(111.9).unwrap(),
-            Decimal::from_f64(109.5).unwrap(),
-            Decimal::from_f64(103.2).unwrap(),
-            Decimal::from_f64(102.5).unwrap(),
-            Decimal::from_f64(100.3).unwrap(),
-            Decimal::from_f64(100.0).unwrap(),
+            price(100.0),
+            price(101.0),
+            price(103.5),
+            price(106.9),
+            price(108.9),
+            price(111.9),
+            price(109.5),
+            price(103.2),
+            price(102.5),
+            price(100.3),
+            price(100.0),
         ]
     }
 
-    fn predict_price_four() -> Vec<Price> {
+    fn predict_price_four() -> Vec<PriceSignal> {
         vec![
-            to_decimal(54.90),
-            to_decimal(64.90),
-            to_decimal(65.10),
-            to_decimal(74.90),
-            to_decimal(75.10),
-            to_decimal(85.10),
+            price(54.90),
+            price(64.90),
+            price(65.10),
+            price(74.90),
+            price(75.10),
+            price(85.10),
         ]
     }
 
@@ -701,7 +711,9 @@ mod tests {
         );
 
         for p in strategy.predictive_lowest_profit_price().iter() {
-            let result = client.trap(p, &strategy, Some(&treasurer)).await;
+            let result = client
+                .trap(&price(p.to_f64().unwrap()), &strategy, Some(&treasurer))
+                .await;
             if let Err(e) = result {
                 println!("{e}");
             }
@@ -724,7 +736,9 @@ mod tests {
         );
 
         for p in strategy.predictive_highest_profit_price().iter() {
-            let result = client.trap(p, &strategy, Some(&treasurer)).await;
+            let result = client
+                .trap(&price(p.to_f64().unwrap()), &strategy, Some(&treasurer))
+                .await;
             if let Err(e) = result {
                 println!("{e}");
             }
@@ -747,7 +761,9 @@ mod tests {
         );
 
         for p in predict_price_five().iter() {
-            let result = client.trap(p, &strategy, Some(&treasurer)).await;
+            let result = client
+                .trap(&price(p.to_f64().unwrap()), &strategy, Some(&treasurer))
+                .await;
             if let Err(e) = result {
                 println!("{e}");
             }
@@ -757,7 +773,9 @@ mod tests {
         assert_eq!(treasurer.balance().await, to_decimal(-16.66620));
 
         for p in predict_price_six().iter() {
-            let result = client.trap(p, &strategy, Some(&treasurer)).await;
+            let result = client
+                .trap(&price(p.to_f64().unwrap()), &strategy, Some(&treasurer))
+                .await;
             if let Err(e) = result {
                 println!("{e}");
             }

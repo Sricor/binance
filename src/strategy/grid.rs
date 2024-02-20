@@ -4,7 +4,7 @@ use rust_decimal::prelude::FromPrimitive;
 use serde::{Deserialize, Serialize};
 use tracing::{instrument, trace, warn};
 
-use super::{Order, Position, PositionSide, Strategy};
+use super::{Order, Position, PositionSide, PriceSignal, Strategy};
 use crate::noun::*;
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -178,9 +178,9 @@ impl Grid {
         true
     }
 
-    pub fn is_reach_stop_loss(&self, price: &Price) -> bool {
+    pub fn is_reach_stop_loss(&self, price: &PriceSignal) -> bool {
         if let Some(stop) = &self.options.stop_loss {
-            if price <= &(self.bound.low() * (Decimal::ONE - stop)) {
+            if price.value() <= &(self.bound.low() * (Decimal::ONE - stop)) {
                 return true;
             }
         }
@@ -191,8 +191,8 @@ impl Grid {
 
 impl Strategy for Grid {
     #[instrument(skip(self))]
-    async fn predictive_buying(&self, price: &Price) -> Option<Amount> {
-        let bound = self.find_buying_bound_position(price)?;
+    async fn predictive_buying(&self, price: &PriceSignal) -> Option<Amount> {
+        let bound = self.find_buying_bound_position(price.value())?;
         let position = bound.position.lock().unwrap();
 
         if let Position::None = &*position {
@@ -205,7 +205,7 @@ impl Strategy for Grid {
     }
 
     #[instrument(skip(self))]
-    async fn predictive_selling(&self, price: &Price) -> Option<Vec<Order>> {
+    async fn predictive_selling(&self, price: &PriceSignal) -> Option<Vec<Order>> {
         if self.is_reach_stop_loss(price) {
             trace!("reach the stop loss price {:?}", price);
             let mut result = Vec::with_capacity(self.positions.len() + 1);
@@ -219,7 +219,7 @@ impl Strategy for Grid {
             return Some(result);
         }
 
-        let bound = self.find_selling_bound_position(price)?;
+        let bound = self.find_selling_bound_position(price.value())?;
         let position = bound.position.lock().unwrap();
 
         if let Position::Stock(order) = &*position {
@@ -281,6 +281,10 @@ mod tests {
     use tracing_test::traced_test;
 
     use super::*;
+
+    fn price(value: f64) -> PriceSignal {
+        PriceSignal::new(decimal(value))
+    }
 
     fn decimal(value: f64) -> Decimal {
         Decimal::from_f64(value).unwrap()
@@ -430,10 +434,10 @@ mod tests {
         );
 
         assert_eq!(grid.is_none_position(), true);
-        assert_eq!(grid.is_reach_stop_loss(&decimal(49.5)), false);
-        assert_eq!(grid.is_reach_stop_loss(&decimal(48.0)), false);
-        assert_eq!(grid.is_reach_stop_loss(&decimal(47.5)), true);
-        assert_eq!(grid.is_reach_stop_loss(&decimal(45.0)), true);
+        assert_eq!(grid.is_reach_stop_loss(&price(49.5)), false);
+        assert_eq!(grid.is_reach_stop_loss(&price(48.0)), false);
+        assert_eq!(grid.is_reach_stop_loss(&price(47.5)), true);
+        assert_eq!(grid.is_reach_stop_loss(&price(45.0)), true);
 
         let order = Order {
             price: decimal(50.0),
@@ -447,13 +451,13 @@ mod tests {
             .for_each(|e| *e.position.lock().unwrap() = Position::Stock(order.clone()));
 
         assert_eq!(grid.is_none_position(), false);
-        assert_eq!(grid.predictive_selling(&decimal(50.0)).await, None);
+        assert_eq!(grid.predictive_selling(&price(50.0)).await, None);
         assert_eq!(
-            grid.predictive_selling(&decimal(47.5)).await,
+            grid.predictive_selling(&price(47.5)).await,
             Some(vec![order.clone(); 3])
         );
         assert_eq!(
-            grid.predictive_selling(&decimal(45.0)).await,
+            grid.predictive_selling(&price(45.0)).await,
             Some(vec![order.clone(); 3])
         );
     }
