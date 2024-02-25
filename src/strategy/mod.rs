@@ -1,4 +1,5 @@
 mod grid;
+mod limit;
 mod percentage;
 
 pub mod strategy {
@@ -72,7 +73,31 @@ pub enum Position {
     None,
 }
 
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub enum Positions<T> {
+    Stock(T),
+    None,
+}
+
 impl Position {
+    pub fn is_none(&self) -> bool {
+        match &self {
+            Self::None => true,
+
+            _ => false,
+        }
+    }
+
+    pub fn is_stock(&self) -> bool {
+        match &self {
+            Self::Stock(_) => true,
+
+            _ => false,
+        }
+    }
+}
+
+impl<T> Positions<T> {
     pub fn is_none(&self) -> bool {
         match &self {
             Self::None => true,
@@ -138,4 +163,73 @@ pub trait Treasurer {
 
     // spent
     fn transfer_out(&self, amount: &Amount) -> impl Future<Output = ()> + Send;
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct PricePoint {
+    value: Price,
+    timestamp: i64,
+}
+
+impl PricePoint {
+    pub fn new(price: Price) -> Self {
+        Self {
+            value: price,
+            timestamp: timestamp_millis(),
+        }
+    }
+
+    pub fn value(&self) -> &Price {
+        &self.value
+    }
+
+    pub fn timestamp(&self) -> i64 {
+        self.timestamp
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct AmountPoint {
+    value: Amount,
+    timestamp: i64,
+}
+
+impl AmountPoint {
+    pub fn new(amount: Amount) -> Self {
+        Self {
+            value: amount,
+            timestamp: timestamp_millis(),
+        }
+    }
+
+    pub fn value(&self) -> &Amount {
+        &self.value
+    }
+
+    pub fn timestamp(&self) -> i64 {
+        self.timestamp
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct QuantityPoint {
+    value: Quantity,
+    timestamp: i64,
+}
+
+impl QuantityPoint {
+    pub fn new(quantity: Quantity) -> Self {
+        Self {
+            value: quantity,
+            timestamp: timestamp_millis(),
+        }
+    }
+
+    pub fn value(&self) -> &Quantity {
+        &self.value
+    }
+
+    pub fn timestamp(&self) -> i64 {
+        self.timestamp
+    }
 }
