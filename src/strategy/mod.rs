@@ -3,7 +3,7 @@ pub mod limit;
 // mod percentage;
 
 use serde::{Deserialize, Serialize};
-use std::{error::Error, future::Future, pin::Pin};
+use std::{error::Error, future::Future, pin::Pin, sync::Arc};
 
 use crate::{common::time, noun::*};
 
@@ -55,14 +55,10 @@ pub trait Strategy {
         S: Fn(&Price, &Quantity) -> ClosureFuture<AmountPoint>;
 }
 
-pub trait Treasurer {
-    fn balance(&self) -> impl Future<Output = Decimal> + Send;
-
-    // income
-    fn transfer_in(&self, amount: &Amount) -> impl Future<Output = ()> + Send;
-
-    // spent
-    fn transfer_out(&self, amount: &Amount) -> impl Future<Output = ()> + Send;
+pub trait Exchanger {
+    // fn price()
+    fn buy(self: &Arc<Self>) -> impl Fn(&Price, &Amount) -> ClosureFuture<QuantityPoint>;
+    fn sell(self: &Arc<Self>) -> impl Fn(&Price, &Quantity) -> ClosureFuture<AmountPoint>;
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
