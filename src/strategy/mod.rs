@@ -290,7 +290,7 @@ mod tests_general {
     pub(super) struct Buying {
         pub(super) prices: Vec<Price>,
         pub(super) quantitys: Vec<Quantity>,
-        pub(super) amount: Vec<Amount>,
+        pub(super) amounts: Vec<Amount>,
         pub(super) count: AtomicUsize,
     }
 
@@ -328,7 +328,7 @@ mod tests_general {
                 let mut buying = buying.lock().unwrap();
                 buying.count.fetch_add(1, Ordering::SeqCst);
                 buying.prices.push(price.clone());
-                buying.amount.push(amount.clone());
+                buying.amounts.push(amount.clone());
                 buying.quantitys.push(quantity.clone());
                 debug!("Buying: {:?}", buying);
             }

@@ -204,11 +204,11 @@ mod tests_limit_trap {
     use super::*;
 
     /// ### Limit Position          
-    /// Investment Amount:   50.0   
-    /// Buying     Price:    0.0   - 100.0  
-    /// Selling    Price:    200.0 - 300.0  
-    /// Position   Quantity: None    
-    fn single_none_position() -> Limit {
+    /// - Investment Amount:   50.0   
+    /// - Buying     Price:    0.0   - 100.0  
+    /// - Selling    Price:    200.0 - 300.0  
+    /// - Position   Quantity: None    
+    fn single_none_position_limit() -> Limit {
         let limit_position =
             LimitPosition::new(decimal(50.0), range(0.0, 100.0), range(200.0, 300.0), None);
         let result = Limit::with_positions(vec![limit_position]);
@@ -217,11 +217,11 @@ mod tests_limit_trap {
     }
 
     /// ### Limit Position          
-    /// Investment Amount:   50.0   
-    /// Buying     Price:    0.0   - 100.0  
-    /// Selling    Price:    200.0 - 300.0  
-    /// Position   Quantity: 2.5    
-    fn single_some_position() -> Limit {
+    /// - Investment Amount:   50.0   
+    /// - Buying     Price:    0.0   - 100.0  
+    /// - Selling    Price:    200.0 - 300.0  
+    /// - Position   Quantity: 2.5    
+    fn single_some_position_limit() -> Limit {
         let limit_position = LimitPosition::new(
             decimal(50.0),
             range(0.0, 100.0),
@@ -233,15 +233,61 @@ mod tests_limit_trap {
         result
     }
 
+    /// ### Limit Position One                            
+    /// - Investment Amount:   10.0                       
+    /// - Buying     Price:    0.0   - 50.0               
+    /// - Selling    Price:    100.0 - 200.0              
+    /// - Position   Quantity: None                       
+    ///                                                   
+    /// ### Limit Position Two                            
+    /// - Investment Amount:   20.0                       
+    /// - Buying     Price:    0.0   - 30.0               
+    /// - Selling    Price:    120.0 - 200.0              
+    /// - Position   Quantity: None                       
+    ///                                                   
+    /// ### Limit Position Three                          
+    /// - Investment Amount:   30.0                       
+    /// - Buying     Price:    0.0   - 80.0               
+    /// - Selling    Price:    150.0 - 200.0              
+    /// - Position   Quantity: None                       
+    ///                                                   
+    /// ### Limit Position Four                           
+    /// - Investment Amount:   40.0                       
+    /// - Buying     Price:    0.0   - 100.0              
+    /// - Selling    Price:    150.0 - 200.0              
+    /// - Position   Quantity: 5.0                        
+    fn multi_position_limit() -> Limit {
+        let limit_position_one =
+            LimitPosition::new(decimal(10.0), range(0.0, 50.0), range(100.0, 200.0), None);
+        let limit_position_two =
+            LimitPosition::new(decimal(20.0), range(0.0, 30.0), range(120.0, 200.0), None);
+        let limit_position_three =
+            LimitPosition::new(decimal(30.0), range(0.0, 80.0), range(150.0, 200.0), None);
+        let limit_position_four = LimitPosition::new(
+            decimal(40.0),
+            range(0.0, 100.0),
+            range(150.0, 200.0),
+            Some(decimal(5.0)),
+        );
+
+        let result = Limit::with_positions(vec![
+            limit_position_one,
+            limit_position_two,
+            limit_position_three,
+            limit_position_four,
+        ]);
+
+        result
+    }
+
     #[tokio::test]
     #[traced_test]
     async fn test_trap_single_some_position() {
-        let limit = single_some_position();
-        let prices = vec![210.0, 200.0, 150.0, 100.0, 90.50];
-
         let trading = simple_trading();
-        let price = simple_prices(prices.clone());
+        let limit = single_some_position_limit();
 
+        let prices = vec![210.0, 200.0, 150.0, 100.0, 90.50];
+        let price = simple_prices(prices.clone());
         for _ in 0..prices.len() {
             limit
                 .trap(&price, &trading.buy, &trading.sell)
@@ -256,7 +302,7 @@ mod tests_limit_trap {
             assert_eq!(selling.quantitys, vec![decimal(2.5)]);
             assert_eq!(selling.count.load(Ordering::SeqCst), 1);
 
-            assert_eq!(buying.amount, vec![decimal(50.0)]);
+            assert_eq!(buying.amounts, vec![decimal(50.0)]);
             assert_eq!(buying.count.load(Ordering::SeqCst), 1);
         }
     }
@@ -264,12 +310,11 @@ mod tests_limit_trap {
     #[tokio::test]
     #[traced_test]
     async fn test_trap_single_none_position() {
-        let limit = single_none_position();
+        let trading = simple_trading();
+        let limit = single_none_position_limit();
 
         let prices = vec![210.0, 200.0, 150.0, 100.0, 90.50];
-        let trading = simple_trading();
         let price = simple_prices(prices.clone());
-
         for _ in 0..prices.len() {
             limit
                 .trap(&price, &trading.buy, &trading.sell)
@@ -284,8 +329,66 @@ mod tests_limit_trap {
             assert_eq!(selling.quantitys, vec![]);
             assert_eq!(selling.count.load(Ordering::SeqCst), 0);
 
-            assert_eq!(buying.amount, vec![decimal(50.0)]);
+            assert_eq!(buying.amounts, vec![decimal(50.0)]);
             assert_eq!(buying.count.load(Ordering::SeqCst), 1);
+        }
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn test_trap_mix() {
+        let trading = simple_trading();
+        let limit = multi_position_limit();
+
+        let prices = vec![60.5, 30.0, 30.5, 35.5, 50.0, 110.5, 160.5, 15.0];
+        let price = simple_prices(prices.clone());
+        for _ in 0..prices.len() {
+            limit
+                .trap(&price, &trading.buy, &trading.sell)
+                .await
+                .unwrap();
+        }
+
+        {
+            let buying = trading.buying();
+            let selling = trading.selling();
+
+            assert_eq!(buying.count.load(Ordering::SeqCst), 7);
+            assert_eq!(
+                buying.prices,
+                vec![
+                    decimal(60.5),
+                    decimal(30.0),
+                    decimal(30.0),
+                    decimal(15.0),
+                    decimal(15.0),
+                    decimal(15.0),
+                    decimal(15.0)
+                ]
+            );
+            assert_eq!(
+                buying.amounts,
+                vec![
+                    decimal(30.0),
+                    decimal(10.0),
+                    decimal(20.0),
+                    decimal(10.0),
+                    decimal(20.0),
+                    decimal(30.0),
+                    decimal(40.0)
+                ]
+            );
+
+            assert_eq!(selling.count.load(Ordering::SeqCst), 4);
+            assert_eq!(
+                selling.prices,
+                vec![
+                    decimal(110.5),
+                    decimal(160.5),
+                    decimal(160.5),
+                    decimal(160.5)
+                ]
+            );
         }
     }
 }
