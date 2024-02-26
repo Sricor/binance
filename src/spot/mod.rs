@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::noun::*;
 
-pub mod client;
+// pub mod client;
 pub mod error;
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]

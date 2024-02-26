@@ -1,5 +1,5 @@
 mod grid;
-mod limit;
+pub mod limit;
 mod percentage;
 
 pub mod strategy {
@@ -9,9 +9,42 @@ pub mod strategy {
 
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use std::{error::Error, future::Future};
+use std::{error::Error, future::Future, pin::Pin};
 
 use crate::{common::time::timestamp_millis, noun::*};
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct Range(pub Decimal, pub Decimal);
+
+impl Range {
+    pub fn is_within_inclusive(&self, value: &Decimal) -> bool {
+        value >= &self.low() && value <= &self.high()
+    }
+
+    pub fn is_within_exclusive(&self, value: &Decimal) -> bool {
+        value > &self.low() && value < &self.high()
+    }
+
+    pub fn high(&self) -> &Decimal {
+        if self.0 > self.1 {
+            return &self.0;
+        }
+
+        &self.1
+    }
+
+    pub fn low(&self) -> &Decimal {
+        if self.0 < self.1 {
+            return &self.0;
+        }
+
+        &self.1
+    }
+
+    pub fn length(&self) -> Decimal {
+        self.high() - self.low()
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct PriceSignal {
@@ -124,21 +157,19 @@ pub enum PositionSide {
     Decrease(Order),
 }
 
+pub type ClosureFuture<T> = Pin<Box<dyn Future<Output = Result<T, Box<dyn Error>>> + Send>>;
+
 pub trait Strategy {
-    // Buy signal, return Some (Amount) when buying is required
-    fn predictive_buying(&self, price: &PriceSignal)
-        -> impl Future<Output = Option<Amount>> + Send;
-
-    // Sell signal, return Some (Vec<Position>) when selling is required
-    fn predictive_selling(
+    fn trap<P, B, S>(
         &self,
-        price: &PriceSignal,
-    ) -> impl Future<Output = Option<Vec<Order>>> + Send;
-
-    // update strategic positions after passing a trade
-    fn update_position(&self, side: &PositionSide) -> impl Future<Output = ()> + Send;
-
-    fn is_completed(&self) -> bool;
+        price: &P,
+        buy: &B,
+        sell: &S,
+    ) -> impl Future<Output = Result<(), Box<dyn Error>>>
+    where
+        P: Fn() -> ClosureFuture<PricePoint>,
+        B: Fn(&Price, &Amount) -> ClosureFuture<QuantityPoint>,
+        S: Fn(&Price, &Quantity) -> ClosureFuture<AmountPoint>;
 }
 
 pub trait Master {
@@ -231,5 +262,119 @@ impl QuantityPoint {
 
     pub fn timestamp(&self) -> i64 {
         self.timestamp
+    }
+}
+
+#[cfg(test)]
+mod tests_general {
+    use std::borrow::BorrowMut;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex, MutexGuard};
+
+    use rust_decimal::prelude::FromPrimitive;
+    use rust_decimal::Decimal;
+    pub(super) use tracing::debug;
+    pub(super) use tracing_test::traced_test;
+
+    use super::*;
+
+    pub(super) fn decimal(value: f64) -> Decimal {
+        Decimal::from_f64(value).unwrap()
+    }
+
+    pub(super) fn range(left: f64, right: f64) -> Range {
+        Range(decimal(left), decimal(right))
+    }
+
+    #[derive(Debug, Default)]
+    pub(super) struct Buying {
+        pub(super) prices: Vec<Price>,
+        pub(super) quantitys: Vec<Quantity>,
+        pub(super) amount: Vec<Amount>,
+        pub(super) count: AtomicUsize,
+    }
+
+    #[derive(Debug, Default)]
+    pub(super) struct Selling {
+        pub(super) prices: Vec<Price>,
+        pub(super) quantitys: Vec<Quantity>,
+        pub(super) incomes: Vec<Amount>,
+        pub(super) count: AtomicUsize,
+    }
+
+    pub(super) struct Trading {
+        pub(super) buy: Box<dyn Fn(&Price, &Amount) -> ClosureFuture<QuantityPoint>>,
+        pub(super) sell: Box<dyn Fn(&Price, &Amount) -> ClosureFuture<AmountPoint>>,
+        pub(super) buying: Arc<Mutex<Buying>>,
+        pub(super) selling: Arc<Mutex<Selling>>,
+    }
+
+    impl Trading {
+        pub(super) fn buying(&self) -> MutexGuard<Buying> {
+            self.buying.lock().unwrap()
+        }
+
+        pub(super) fn selling(&self) -> MutexGuard<Selling> {
+            self.selling.lock().unwrap()
+        }
+    }
+
+    pub(super) fn simple_trading() -> Trading {
+        let buying_information = Arc::new(Mutex::new(Buying::default()));
+        let buying = buying_information.clone();
+        let buy = move |price: &Price, amount: &Amount| -> ClosureFuture<QuantityPoint> {
+            let quantity = (amount / price).trunc_with_scale(5);
+            {
+                let mut buying = buying.lock().unwrap();
+                buying.count.fetch_add(1, Ordering::SeqCst);
+                buying.prices.push(price.clone());
+                buying.amount.push(amount.clone());
+                buying.quantitys.push(quantity.clone());
+                debug!("Buying: {:?}", buying);
+            }
+
+            let f = async move { Ok(QuantityPoint::new(quantity)) };
+
+            Box::pin(f)
+        };
+
+        let selling_information = Arc::new(Mutex::new(Selling::default()));
+        let selling = selling_information.clone();
+        let sell = move |price: &Price, quantity: &Quantity| -> ClosureFuture<AmountPoint> {
+            let income = (quantity / price).trunc_with_scale(5);
+            {
+                let mut selling = selling.lock().unwrap();
+                selling.count.fetch_add(1, Ordering::SeqCst);
+                selling.prices.push(price.clone());
+                selling.incomes.push(income.clone());
+                selling.quantitys.push(quantity.clone());
+                debug!("Selling: {:?}", selling);
+            }
+            let f = async move { Ok(AmountPoint::new(income)) };
+
+            Box::pin(f)
+        };
+
+        let result = Trading {
+            buy: Box::new(buy),
+            sell: Box::new(sell),
+            buying: buying_information,
+            selling: selling_information,
+        };
+
+        result
+    }
+
+    pub(super) fn simple_prices(prices: Vec<f64>) -> impl Fn() -> ClosureFuture<PricePoint> {
+        let iter = Mutex::new(prices.into_iter());
+        let price = move || -> ClosureFuture<PricePoint> {
+            let item = iter.lock().unwrap().borrow_mut().next().unwrap();
+
+            let f = async move { Ok(PricePoint::new(decimal(item))) };
+
+            Box::pin(f)
+        };
+
+        price
     }
 }

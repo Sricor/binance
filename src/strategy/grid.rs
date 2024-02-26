@@ -187,9 +187,6 @@ impl Grid {
 
         false
     }
-}
-
-impl Strategy for Grid {
     #[instrument(skip(self))]
     async fn predictive_buying(&self, price: &PriceSignal) -> Option<Amount> {
         let bound = self.find_buying_bound_position(price.value())?;
@@ -268,6 +265,10 @@ impl Strategy for Grid {
         false
     }
 }
+
+// impl Strategy for Grid {
+
+// }
 
 #[cfg(test)]
 mod tests {

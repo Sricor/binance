@@ -38,9 +38,7 @@ impl Percentage {
     pub async fn positions(&self) -> Vec<Order> {
         self.positions.lock().await.clone()
     }
-}
 
-impl Strategy for Percentage {
     async fn predictive_buying(&self, price: &PriceSignal) -> Option<Amount> {
         if self.is_completed() {
             return None;
@@ -103,3 +101,7 @@ impl Strategy for Percentage {
         self.is_completed.load(Ordering::SeqCst)
     }
 }
+
+// impl Strategy for Percentage {
+
+// }
