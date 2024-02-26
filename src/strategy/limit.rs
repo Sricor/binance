@@ -59,6 +59,7 @@ impl LimitPosition {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Limit {
     positions: Vec<LimitPosition>,
 }
@@ -66,6 +67,10 @@ pub struct Limit {
 impl Limit {
     pub fn with_positions(positions: Vec<LimitPosition>) -> Self {
         Self { positions }
+    }
+
+    pub fn positions(&self) -> &Vec<LimitPosition> {
+        &self.positions
     }
 }
 

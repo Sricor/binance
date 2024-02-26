@@ -1,17 +1,11 @@
-mod grid;
+pub mod grid;
 pub mod limit;
-mod percentage;
+// mod percentage;
 
-pub mod strategy {
-    pub use super::grid::{Bound, BoundPosition, Grid};
-    pub use super::percentage::Percentage;
-}
-
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::{error::Error, future::Future, pin::Pin};
 
-use crate::{common::time::timestamp_millis, noun::*};
+use crate::{common::time, noun::*};
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct Range(pub Decimal, pub Decimal);
@@ -46,117 +40,6 @@ impl Range {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-pub struct PriceSignal {
-    value: Price,
-    timestamp: i64,
-}
-
-impl PriceSignal {
-    pub fn new(price: Price) -> Self {
-        Self {
-            value: price,
-            timestamp: timestamp_millis(),
-        }
-    }
-
-    pub fn value(&self) -> &Price {
-        &self.value
-    }
-
-    pub fn timestamp(&self) -> i64 {
-        self.timestamp
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-pub struct Order {
-    price: Price,
-    amount: Amount,
-    quantity: Quantity,
-    timestamp: i64,
-}
-
-impl Order {
-    pub fn new(price: Price, amount: Amount, quantity: Quantity) -> Self {
-        Self {
-            price,
-            amount,
-            quantity,
-            timestamp: Utc::now().timestamp(),
-        }
-    }
-
-    pub fn price(&self) -> &Price {
-        &self.price
-    }
-
-    pub fn amount(&self) -> &Amount {
-        &self.amount
-    }
-
-    pub fn quantity(&self) -> &Quantity {
-        &self.quantity
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-pub enum Position {
-    Stock(Order),
-    None,
-}
-
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-pub enum Positions<T> {
-    Stock(T),
-    None,
-}
-
-impl Position {
-    pub fn is_none(&self) -> bool {
-        match &self {
-            Self::None => true,
-
-            _ => false,
-        }
-    }
-
-    pub fn is_stock(&self) -> bool {
-        match &self {
-            Self::Stock(_) => true,
-
-            _ => false,
-        }
-    }
-}
-
-impl<T> Positions<T> {
-    pub fn is_none(&self) -> bool {
-        match &self {
-            Self::None => true,
-
-            _ => false,
-        }
-    }
-
-    pub fn is_stock(&self) -> bool {
-        match &self {
-            Self::Stock(_) => true,
-
-            _ => false,
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-pub enum PositionSide {
-    /// Complete buying order
-    Increase(Order),
-
-    /// Complete selling order
-    Decrease(Order),
-}
-
 pub type ClosureFuture<T> = Pin<Box<dyn Future<Output = Result<T, Box<dyn Error>>> + Send>>;
 
 pub trait Strategy {
@@ -170,20 +53,6 @@ pub trait Strategy {
         P: Fn() -> ClosureFuture<PricePoint>,
         B: Fn(&Price, &Amount) -> ClosureFuture<QuantityPoint>,
         S: Fn(&Price, &Quantity) -> ClosureFuture<AmountPoint>;
-}
-
-pub trait Master {
-    type Item;
-
-    fn trap<S, T>(
-        &self,
-        price: &PriceSignal,
-        strategy: &S,
-        treasurer: Option<&T>,
-    ) -> impl Future<Output = Result<Self::Item, impl Error>> + Send
-    where
-        S: Strategy + Send + Sync,
-        T: Treasurer + Send + Sync;
 }
 
 pub trait Treasurer {
@@ -206,7 +75,7 @@ impl PricePoint {
     pub fn new(price: Price) -> Self {
         Self {
             value: price,
-            timestamp: timestamp_millis(),
+            timestamp: time::timestamp_millis(),
         }
     }
 
@@ -229,7 +98,7 @@ impl AmountPoint {
     pub fn new(amount: Amount) -> Self {
         Self {
             value: amount,
-            timestamp: timestamp_millis(),
+            timestamp: time::timestamp_millis(),
         }
     }
 
@@ -252,7 +121,7 @@ impl QuantityPoint {
     pub fn new(quantity: Quantity) -> Self {
         Self {
             value: quantity,
-            timestamp: timestamp_millis(),
+            timestamp: time::timestamp_millis(),
         }
     }
 
