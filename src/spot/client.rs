@@ -223,13 +223,13 @@ mod tests_count_leak {
     use super::super::tests_general::*;
     use super::*;
 
-    fn simple_btc_client() -> SpotClient {
-        SpotClient::new(String::from("null"), String::from("null"), btc_spot(), None)
+    fn simple_client(spot: Spot) -> SpotClient {
+        SpotClient::new(String::from("null"), String::from("null"), spot, None)
     }
 
     #[tokio::test]
     async fn test_spwan_count() {
-        let client = Arc::new(simple_btc_client());
+        let client = Arc::new(simple_client(btc_spot()));
         let buy = client.spawn_buy();
         assert_eq!(Arc::strong_count(&client), 1);
 
@@ -257,7 +257,7 @@ mod tests_count_leak {
 
     #[tokio::test]
     async fn test_spwan_multi_count() {
-        let client = Arc::new(simple_btc_client());
+        let client = Arc::new(simple_client(btc_spot()));
         let number = 10;
 
         let mut vec = Vec::new();
@@ -286,6 +286,129 @@ mod tests_count_leak {
     }
 }
 
+#[cfg(test)]
+mod tests_client {
+    use tracing_test::traced_test;
+
+    use super::super::tests_general::*;
+    use super::*;
+
+    fn simple_client(spot: Spot) -> SpotClient {
+        SpotClient::new(String::from("null"), String::from("null"), spot, None)
+    }
+
+    #[tokio::test]
+    async fn test_buying() {
+        let client = simple_client(btc_spot());
+        let buying = client
+            .buy(&decimal(43145.42), &decimal(0.0015))
+            .await
+            .unwrap();
+        let assert = SpotBuying {
+            price: decimal(43145.42),
+            spent: decimal(64.71813),
+            quantity: decimal(0.0015),
+            quantity_after_commission: decimal(0.0014985),
+        };
+        assert_eq!(buying, assert);
+
+        let client = simple_client(btc_spot());
+        let buying = client
+            .buy(&decimal(43145.42), &decimal(0.00159858))
+            .await
+            .unwrap();
+        let assert = SpotBuying {
+            price: decimal(43145.42),
+            spent: decimal(68.6012178),
+            quantity: decimal(0.00159),
+            quantity_after_commission: decimal(0.0015884),
+        };
+        assert_eq!(buying, assert);
+
+        let client = simple_client(eth_spot());
+        let buying = client
+            .buy(&decimal(2596.04), &decimal(0.079))
+            .await
+            .unwrap();
+        let assert = SpotBuying {
+            price: decimal(2596.04),
+            spent: decimal(205.087160),
+            quantity: decimal(0.0790),
+            quantity_after_commission: decimal(0.0789210),
+        };
+        assert_eq!(buying, assert);
+
+        let client = simple_client(eth_spot());
+        let buying = client
+            .buy(&decimal(2596.04), &decimal(0.0791531))
+            .await
+            .unwrap();
+        let assert = SpotBuying {
+            price: decimal(2596.04),
+            spent: decimal(205.346764),
+            quantity: decimal(0.0791),
+            quantity_after_commission: decimal(0.0790209),
+        };
+        assert_eq!(buying, assert);
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn test_selling() {
+        let client = simple_client(btc_spot());
+        let buying = client
+            .sell(&decimal(42991.10), &decimal(0.00349))
+            .await
+            .unwrap();
+        let assert = SpotSelling {
+            price: decimal(42991.10),
+            income: decimal(150.038939),
+            income_after_commission: decimal(149.88890006),
+            quantity: decimal(0.00349),
+        };
+        assert_eq!(buying, assert);
+
+        let client = simple_client(btc_spot());
+        let buying = client
+            .sell(&decimal(42991.10), &decimal(0.00349135))
+            .await
+            .unwrap();
+        let assert = SpotSelling {
+            price: decimal(42991.10),
+            income: decimal(150.038939),
+            income_after_commission: decimal(149.88890006),
+            quantity: decimal(0.00349),
+        };
+        assert_eq!(buying, assert);
+
+        let client = simple_client(eth_spot());
+        let buying = client
+            .sell(&decimal(2652.01), &decimal(0.1056))
+            .await
+            .unwrap();
+        let assert = SpotSelling {
+            price: decimal(2652.01),
+            income: decimal(280.052256),
+            income_after_commission: decimal(279.77220374),
+            quantity: decimal(0.1056),
+        };
+        assert_eq!(buying, assert);
+
+        let client = simple_client(eth_spot());
+        let buying = client
+            .sell(&decimal(2652.01), &decimal(0.105136))
+            .await
+            .unwrap();
+        let assert = SpotSelling {
+            price: decimal(2652.01),
+            income: decimal(278.726251),
+            income_after_commission: decimal(278.44752475),
+            quantity: decimal(0.1051),
+        };
+        assert_eq!(buying, assert);
+    }
+}
+
 //     use rust_decimal::prelude::FromPrimitive;
 //     use tracing_test::traced_test;
 
@@ -304,142 +427,6 @@ mod tests_count_leak {
 
 //     fn new_client(spot: Spot) -> SpotClient {
 //         SpotClient::new("".into(), "".into(), spot, None)
-//     }
-
-//     #[tokio::test]
-//     #[traced_test]
-//     async fn test_dev_buy() {
-//         let client = new_client(btc_spot());
-//         let buying = client
-//             .buy(
-//                 &Decimal::from_f64(43145.42).unwrap(),
-//                 &Decimal::from_f64(0.0015).unwrap(),
-//             )
-//             .await
-//             .unwrap();
-//         let assert = SpotBuying {
-//             price: Decimal::from_f64(43145.42).unwrap(),
-//             spent: Decimal::from_f64(64.71813).unwrap(),
-//             quantity: Decimal::from_f64(0.0015).unwrap(),
-//             quantity_after_commission: Decimal::from_f64(0.0014985).unwrap(),
-//         };
-//         assert_eq!(buying, assert);
-
-//         let client = new_client(btc_spot());
-//         let buying = client
-//             .buy(
-//                 &Decimal::from_f64(43145.42).unwrap(),
-//                 &Decimal::from_f64(0.00159858).unwrap(),
-//             )
-//             .await
-//             .unwrap();
-//         let assert = SpotBuying {
-//             price: Decimal::from_f64(43145.42).unwrap(),
-//             spent: Decimal::from_f64(68.6012178).unwrap(),
-//             quantity: Decimal::from_f64(0.00159).unwrap(),
-//             quantity_after_commission: Decimal::from_f64(0.0015884).unwrap(),
-//         };
-//         assert_eq!(buying, assert);
-
-//         let client = new_client(eth_spot());
-//         let buying = client
-//             .buy(
-//                 &Decimal::from_f64(2596.04).unwrap(),
-//                 &Decimal::from_f64(0.079).unwrap(),
-//             )
-//             .await
-//             .unwrap();
-//         let assert = SpotBuying {
-//             price: Decimal::from_f64(2596.04).unwrap(),
-//             spent: Decimal::from_f64(205.087160).unwrap(),
-//             quantity: Decimal::from_f64(0.0790).unwrap(),
-//             quantity_after_commission: Decimal::from_f64(0.0789210).unwrap(),
-//         };
-//         assert_eq!(buying, assert);
-
-//         let client = new_client(eth_spot());
-//         let buying = client
-//             .buy(
-//                 &Decimal::from_f64(2596.04).unwrap(),
-//                 &Decimal::from_f64(0.0791531).unwrap(),
-//             )
-//             .await
-//             .unwrap();
-//         let assert = SpotBuying {
-//             price: Decimal::from_f64(2596.04).unwrap(),
-//             spent: Decimal::from_f64(205.346764).unwrap(),
-//             quantity: Decimal::from_f64(0.0791).unwrap(),
-//             quantity_after_commission: Decimal::from_f64(0.0790209).unwrap(),
-//         };
-//         assert_eq!(buying, assert);
-//     }
-
-//     #[tokio::test]
-//     #[traced_test]
-//     async fn test_dev_sell() {
-//         let client = new_client(btc_spot());
-//         let buying = client
-//             .sell(
-//                 &Decimal::from_f64(42991.10).unwrap(),
-//                 &Decimal::from_f64(0.00349).unwrap(),
-//             )
-//             .await
-//             .unwrap();
-//         let assert = SpotSelling {
-//             price: Decimal::from_f64(42991.10).unwrap(),
-//             income: Decimal::from_f64(150.038939).unwrap(),
-//             income_after_commission: Decimal::from_f64(149.88890006).unwrap(),
-//             quantity: Decimal::from_f64(0.00349).unwrap(),
-//         };
-//         assert_eq!(buying, assert);
-
-//         let client = new_client(btc_spot());
-//         let buying = client
-//             .sell(
-//                 &Decimal::from_f64(42991.10).unwrap(),
-//                 &Decimal::from_f64(0.00349135).unwrap(),
-//             )
-//             .await
-//             .unwrap();
-//         let assert = SpotSelling {
-//             price: Decimal::from_f64(42991.10).unwrap(),
-//             income: Decimal::from_f64(150.038939).unwrap(),
-//             income_after_commission: Decimal::from_f64(149.88890006).unwrap(),
-//             quantity: Decimal::from_f64(0.00349).unwrap(),
-//         };
-//         assert_eq!(buying, assert);
-
-//         let client = new_client(eth_spot());
-//         let buying = client
-//             .sell(
-//                 &Decimal::from_f64(2652.01).unwrap(),
-//                 &Decimal::from_f64(0.1056).unwrap(),
-//             )
-//             .await
-//             .unwrap();
-//         let assert = SpotSelling {
-//             price: Decimal::from_f64(2652.01).unwrap(),
-//             income: Decimal::from_f64(280.052256).unwrap(),
-//             income_after_commission: Decimal::from_f64(279.77220374).unwrap(),
-//             quantity: Decimal::from_f64(0.1056).unwrap(),
-//         };
-//         assert_eq!(buying, assert);
-
-//         let client = new_client(eth_spot());
-//         let buying = client
-//             .sell(
-//                 &Decimal::from_f64(2652.01).unwrap(),
-//                 &Decimal::from_f64(0.105136).unwrap(),
-//             )
-//             .await
-//             .unwrap();
-//         let assert = SpotSelling {
-//             price: Decimal::from_f64(2652.01).unwrap(),
-//             income: Decimal::from_f64(278.726251).unwrap(),
-//             income_after_commission: Decimal::from_f64(278.44752475).unwrap(),
-//             quantity: Decimal::from_f64(0.1051).unwrap(),
-//         };
-//         assert_eq!(buying, assert);
 //     }
 
 //     fn predict_price_one() -> Vec<PriceSignal> {
@@ -522,8 +509,8 @@ mod tests_count_leak {
 //         let client = new_client(btc_spot());
 //         let treasurer = Prosperity::new(None);
 //         let strategy = Percentage::new(
-//             Decimal::from_f64(100.0).unwrap(),
-//             Decimal::from_f64(0.01).unwrap(),
+//             decimal(100.0).unwrap(),
+//             decimal(0.01).unwrap(),
 //             None,
 //             None,
 //         );
@@ -539,7 +526,7 @@ mod tests_count_leak {
 //         assert_eq!(strategy.positions().await.is_empty(), true);
 //         assert_eq!(
 //             treasurer.balance().await,
-//             Decimal::from_f64(1.29710150).unwrap()
+//             decimal(1.29710150).unwrap()
 //         );
 //     }
 
@@ -550,8 +537,8 @@ mod tests_count_leak {
 //         let client = new_client(btc_spot());
 //         let treasurer = Prosperity::new(None);
 //         let strategy = Percentage::new(
-//             Decimal::from_f64(100.0).unwrap(),
-//             Decimal::from_f64(0.01).unwrap(),
+//             decimal(100.0).unwrap(),
+//             decimal(0.01).unwrap(),
 //             None,
 //             None,
 //         );
@@ -567,7 +554,7 @@ mod tests_count_leak {
 //         assert_eq!(strategy.positions().await.is_empty(), false);
 //         assert_eq!(
 //             treasurer.balance().await,
-//             Decimal::from_f64(-100.00000).unwrap()
+//             decimal(-100.00000).unwrap()
 //         );
 //     }
 
@@ -578,8 +565,8 @@ mod tests_count_leak {
 //         let client = new_client(btc_spot());
 //         let treasurer = Prosperity::new(None);
 //         let strategy = Percentage::new(
-//             Decimal::from_f64(100.0).unwrap(),
-//             Decimal::from_f64(0.02).unwrap(),
+//             decimal(100.0).unwrap(),
+//             decimal(0.02).unwrap(),
 //             None,
 //             None,
 //         );
@@ -595,7 +582,7 @@ mod tests_count_leak {
 //         assert_eq!(strategy.positions().await.is_empty(), true);
 //         assert_eq!(
 //             treasurer.balance().await,
-//             Decimal::from_f64(3.29310350).unwrap()
+//             decimal(3.29310350).unwrap()
 //         );
 //     }
 
@@ -606,9 +593,9 @@ mod tests_count_leak {
 //         let client = new_client(btc_spot());
 //         let treasurer = Prosperity::new(None);
 //         let strategy = Percentage::new(
-//             Decimal::from_f64(100.0).unwrap(),
-//             Decimal::from_f64(0.01).unwrap(),
-//             Some(Decimal::from_f64(0.03).unwrap()),
+//             decimal(100.0).unwrap(),
+//             decimal(0.01).unwrap(),
+//             Some(decimal(0.03).unwrap()),
 //             None,
 //         );
 
@@ -623,7 +610,7 @@ mod tests_count_leak {
 //         assert_eq!(strategy.positions().await.is_empty(), true);
 //         assert_eq!(
 //             treasurer.balance().await,
-//             Decimal::from_f64(-0.96836077).unwrap()
+//             decimal(-0.96836077).unwrap()
 //         );
 //     }
 
@@ -634,10 +621,10 @@ mod tests_count_leak {
 //         let client = new_client(btc_spot());
 //         let treasurer = Prosperity::new(None);
 //         let strategy = Percentage::new(
-//             Decimal::from_f64(100.0).unwrap(),
-//             Decimal::from_f64(0.01).unwrap(),
-//             Some(Decimal::from_f64(0.03).unwrap()),
-//             Some(Decimal::from_f64(99.0).unwrap()),
+//             decimal(100.0).unwrap(),
+//             decimal(0.01).unwrap(),
+//             Some(decimal(0.03).unwrap()),
+//             Some(decimal(99.0).unwrap()),
 //         );
 
 //         for p in price.iter() {
@@ -651,7 +638,7 @@ mod tests_count_leak {
 //         assert_eq!(strategy.positions().await.is_empty(), true);
 //         assert_eq!(
 //             treasurer.balance().await,
-//             Decimal::from_f64(-0.96836077).unwrap()
+//             decimal(-0.96836077).unwrap()
 //         );
 //     }
 
@@ -662,10 +649,10 @@ mod tests_count_leak {
 //         let client = new_client(btc_spot());
 //         let treasurer = Prosperity::new(None);
 //         let strategy = Percentage::new(
-//             Decimal::from_f64(100.0).unwrap(),
-//             Decimal::from_f64(0.01).unwrap(),
-//             Some(Decimal::from_f64(0.03).unwrap()),
-//             Some(Decimal::from_f64(101.0).unwrap()),
+//             decimal(100.0).unwrap(),
+//             decimal(0.01).unwrap(),
+//             Some(decimal(0.03).unwrap()),
+//             Some(decimal(101.0).unwrap()),
 //         );
 
 //         for p in price.iter() {
@@ -677,7 +664,7 @@ mod tests_count_leak {
 
 //         assert_eq!(strategy.is_completed(), false);
 //         assert_eq!(strategy.positions().await.is_empty(), true);
-//         assert_eq!(treasurer.balance().await, Decimal::from_f64(0.0).unwrap());
+//         assert_eq!(treasurer.balance().await, decimal(0.0).unwrap());
 //     }
 
 //     #[tokio::test]
