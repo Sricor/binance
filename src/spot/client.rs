@@ -3,13 +3,14 @@ use std::sync::Arc;
 use binance::{
     account::{Account, OrderRequest},
     api::Binance,
+    market::Market,
 };
-use rust_decimal::prelude::ToPrimitive;
+use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
 
 use super::{error::SpotClientError, Spot, SpotBuying, SpotSelling};
 use crate::{
     noun::*,
-    strategy::{AmountPoint, ClosureFuture, Exchanger, QuantityPoint},
+    strategy::{AmountPoint, ClosureFuture, Exchanger, PricePoint, QuantityPoint},
 };
 
 type SpotClientResult<T> = Result<T, SpotClientError>;
@@ -19,6 +20,7 @@ pub struct SpotClient {
     spot: Spot,
     option: Option<SpotClientOption>,
 
+    pub market: Market,
     pub client: Account,
 }
 
@@ -30,10 +32,12 @@ impl SpotClient {
         option: Option<SpotClientOption>,
     ) -> Self {
         let client = Account::new(Some(api_key.clone()), Some(secret_key.clone()));
+        let market = Market::new(None, None);
         Self {
             spot,
             option,
             client,
+            market,
         }
     }
 }
@@ -48,6 +52,18 @@ impl SpotClient {
         match &self.option {
             Some(v) => v.is_production,
             None => false,
+        }
+    }
+
+    pub async fn price(&self) -> SpotClientResult<Price> {
+        match self.market.get_price(self.spot.symbol()).await {
+            Ok(v) => {
+                let price = Decimal::from_f64(v.price)
+                    .ok_or(SpotClientError::Decimal(v.price.to_string()))?;
+
+                Ok(price)
+            }
+            Err(e) => Err(SpotClientError::Price(e.to_string())),
         }
     }
 
@@ -209,6 +225,22 @@ impl Exchanger for SpotClient {
                     .income_after_commission;
 
                 Ok(AmountPoint::new(income))
+            };
+
+            Box::pin(f)
+        };
+
+        result
+    }
+
+    fn spawn_price(self: &Arc<Self>) -> impl Fn() -> ClosureFuture<PricePoint> {
+        let result = move || -> ClosureFuture<PricePoint> {
+            let client = self.clone();
+
+            let f = async move {
+                let price = client.price().await?;
+
+                Ok(PricePoint::new(price))
             };
 
             Box::pin(f)

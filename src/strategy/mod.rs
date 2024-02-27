@@ -2,10 +2,12 @@ pub mod grid;
 pub mod limit;
 // mod percentage;
 
-use serde::{Deserialize, Serialize};
 use std::{error::Error, future::Future, pin::Pin, sync::Arc};
 
-use crate::{common::time, noun::*};
+use chrono::Utc;
+use serde::{Deserialize, Serialize};
+
+use crate::noun::*;
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct Range(pub Decimal, pub Decimal);
@@ -56,7 +58,7 @@ pub trait Strategy {
 }
 
 pub trait Exchanger {
-    // fn price()
+    fn spawn_price(self: &Arc<Self>) -> impl Fn() -> ClosureFuture<PricePoint>;
     fn spawn_buy(self: &Arc<Self>) -> impl Fn(Price, Amount) -> ClosureFuture<QuantityPoint>;
     fn spawn_sell(self: &Arc<Self>) -> impl Fn(Price, Quantity) -> ClosureFuture<AmountPoint>;
 }
@@ -71,7 +73,7 @@ impl PricePoint {
     pub fn new(price: Price) -> Self {
         Self {
             value: price,
-            timestamp: time::timestamp_millis(),
+            timestamp: timestamp_millis(),
         }
     }
 
@@ -94,7 +96,7 @@ impl AmountPoint {
     pub fn new(amount: Amount) -> Self {
         Self {
             value: amount,
-            timestamp: time::timestamp_millis(),
+            timestamp: timestamp_millis(),
         }
     }
 
@@ -117,7 +119,7 @@ impl QuantityPoint {
     pub fn new(quantity: Quantity) -> Self {
         Self {
             value: quantity,
-            timestamp: time::timestamp_millis(),
+            timestamp: timestamp_millis(),
         }
     }
 
@@ -128,6 +130,12 @@ impl QuantityPoint {
     pub fn timestamp(&self) -> i64 {
         self.timestamp
     }
+}
+
+fn timestamp_millis() -> i64 {
+    let now = Utc::now();
+
+    now.timestamp_millis()
 }
 
 #[cfg(test)]

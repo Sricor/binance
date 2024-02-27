@@ -1,18 +1,20 @@
+use std::{error::Error, fmt::Display};
+
 #[derive(Debug)]
 pub enum SpotClientError {
+    Price(String),
     Trading(String),
-    Strategy(String),
-    Decimal,
+    Decimal(String),
 }
 
-impl std::error::Error for SpotClientError {}
+impl Error for SpotClientError {}
 
-impl std::fmt::Display for SpotClientError {
+impl Display for SpotClientError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Price(e) => write!(f, "{}", e),
             Self::Trading(e) => write!(f, "{}", e),
-            Self::Strategy(e) => write!(f, "{}", e),
-            Self::Decimal => write!(f, "to decimal error"),
+            Self::Decimal(e) => write!(f, "{} to decimal error", e),
         }
     }
 }
