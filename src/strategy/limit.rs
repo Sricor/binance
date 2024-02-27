@@ -79,8 +79,8 @@ impl Strategy for Limit {
     async fn trap<P, B, S>(&self, price: &P, buy: &B, sell: &S) -> Result<(), Box<dyn Error>>
     where
         P: Fn() -> ClosureFuture<PricePoint>,
-        B: Fn(&Price, &Amount) -> ClosureFuture<QuantityPoint>,
-        S: Fn(&Price, &Quantity) -> ClosureFuture<AmountPoint>,
+        B: Fn(Price, Amount) -> ClosureFuture<QuantityPoint>,
+        S: Fn(Price, Quantity) -> ClosureFuture<AmountPoint>,
     {
         let price = match price().await {
             Ok(v) => v.value().clone(),
@@ -89,14 +89,14 @@ impl Strategy for Limit {
 
         for limit_position in self.positions.iter() {
             if let Some(quantity) = limit_position.predictive_selling(&price) {
-                let _ = sell(&price, &quantity).await?;
+                let _ = sell(price, quantity).await?;
                 limit_position.update_position(None);
 
                 continue;
             }
 
             if let Some(amount) = limit_position.predictive_buying(&price) {
-                let quantity = buy(&price, &amount).await?;
+                let quantity = buy(price, amount).await?;
                 limit_position.update_position(Some(quantity.value().clone()));
 
                 continue;

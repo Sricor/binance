@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use super::{error::SpotClientError, Spot, SpotBuying, SpotSelling};
 use crate::{
     noun::*,
-    strategy::{AmountPoint, ClosureFuture, Exchanger, QuantityPoint, Strategy},
+    strategy::{AmountPoint, ClosureFuture, Exchanger, QuantityPoint},
 };
 
 type SpotClientResult<T> = Result<T, SpotClientError>;
@@ -52,11 +52,7 @@ impl SpotClient {
         }
     }
 
-    pub async fn buy_order(
-        &self,
-        price: &Price,
-        quantity: &Quantity,
-    ) -> SpotClientResult<SpotBuying> {
+    pub async fn buy(&self, price: &Price, quantity: &Quantity) -> SpotClientResult<SpotBuying> {
         let buying_quantity = self.spot.transaction_quantity_with_precision(quantity);
         self.is_allow_transaction(price, &buying_quantity)?;
 
@@ -81,7 +77,7 @@ impl SpotClient {
         Ok(self.calculator_buying(price, &buying_quantity))
     }
 
-    pub async fn sell_order(&self, price: &Price, quantity: &Quantity) -> SpotClientResult<SpotSelling> {
+    pub async fn sell(&self, price: &Price, quantity: &Quantity) -> SpotClientResult<SpotSelling> {
         let selling_quantity = self.spot.transaction_quantity_with_precision(quantity);
         self.is_allow_transaction(price, &selling_quantity)?;
 
@@ -189,15 +185,14 @@ pub enum SpotTransactionSide {
 }
 
 impl Exchanger for SpotClient {
-    fn buy(self: &Arc<Self>) -> impl Fn(&Price, &Amount) -> ClosureFuture<QuantityPoint> {
-        let result = move |price: &Price, amount: &Amount| -> ClosureFuture<QuantityPoint> {
+    fn spawn_buy(self: &Arc<Self>) -> impl Fn(Price, Amount) -> ClosureFuture<QuantityPoint> {
+        let result = move |price: Price, amount: Amount| -> ClosureFuture<QuantityPoint> {
+            let buying_quantity = self.spot.buying_quantity_by_amount(&price, &amount);
             let client = self.clone();
-            let price = price.clone();
-            let buying_quantity = self.spot.buying_quantity_by_amount(&price, amount);
 
             let f = async move {
                 let quantity = client
-                    .buy_order(&price, &buying_quantity)
+                    .buy(&price, &buying_quantity)
                     .await
                     .unwrap()
                     .quantity_after_commission;
@@ -211,15 +206,13 @@ impl Exchanger for SpotClient {
         result
     }
 
-    fn sell(self: &Arc<Self>) -> impl Fn(&Price, &Quantity) -> ClosureFuture<AmountPoint> {
-        let result = move |price: &Price, quantity: &Quantity| -> ClosureFuture<AmountPoint> {
+    fn spawn_sell(self: &Arc<Self>) -> impl Fn(Price, Quantity) -> ClosureFuture<AmountPoint> {
+        let result = move |price: Price, quantity: Quantity| -> ClosureFuture<AmountPoint> {
             let client = self.clone();
-            let quantity = quantity.clone();
-            let price = price.clone();
 
             let f = async move {
                 let income = client
-                    .sell_order(&price, &quantity)
+                    .sell(&price, &quantity)
                     .await
                     .unwrap()
                     .income_after_commission;

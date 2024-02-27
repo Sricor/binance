@@ -51,14 +51,14 @@ pub trait Strategy {
     ) -> impl Future<Output = Result<(), Box<dyn Error>>>
     where
         P: Fn() -> ClosureFuture<PricePoint>,
-        B: Fn(&Price, &Amount) -> ClosureFuture<QuantityPoint>,
-        S: Fn(&Price, &Quantity) -> ClosureFuture<AmountPoint>;
+        B: Fn(Price, Amount) -> ClosureFuture<QuantityPoint>,
+        S: Fn(Price, Quantity) -> ClosureFuture<AmountPoint>;
 }
 
 pub trait Exchanger {
     // fn price()
-    fn buy(self: &Arc<Self>) -> impl Fn(&Price, &Amount) -> ClosureFuture<QuantityPoint>;
-    fn sell(self: &Arc<Self>) -> impl Fn(&Price, &Quantity) -> ClosureFuture<AmountPoint>;
+    fn spawn_buy(self: &Arc<Self>) -> impl Fn(Price, Amount) -> ClosureFuture<QuantityPoint>;
+    fn spawn_sell(self: &Arc<Self>) -> impl Fn(Price, Quantity) -> ClosureFuture<AmountPoint>;
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -168,8 +168,8 @@ mod tests_general {
     }
 
     pub(super) struct Trading {
-        pub(super) buy: Box<dyn Fn(&Price, &Amount) -> ClosureFuture<QuantityPoint>>,
-        pub(super) sell: Box<dyn Fn(&Price, &Amount) -> ClosureFuture<AmountPoint>>,
+        pub(super) buy: Box<dyn Fn(Price, Amount) -> ClosureFuture<QuantityPoint>>,
+        pub(super) sell: Box<dyn Fn(Price, Quantity) -> ClosureFuture<AmountPoint>>,
         pub(super) buying: Arc<Mutex<Buying>>,
         pub(super) selling: Arc<Mutex<Selling>>,
     }
@@ -187,7 +187,7 @@ mod tests_general {
     pub(super) fn simple_trading() -> Trading {
         let buying_information = Arc::new(Mutex::new(Buying::default()));
         let buying = buying_information.clone();
-        let buy = move |price: &Price, amount: &Amount| -> ClosureFuture<QuantityPoint> {
+        let buy = move |price: Price, amount: Amount| -> ClosureFuture<QuantityPoint> {
             let quantity = (amount / price).trunc_with_scale(5);
             {
                 let mut buying = buying.lock().unwrap();
@@ -205,7 +205,7 @@ mod tests_general {
 
         let selling_information = Arc::new(Mutex::new(Selling::default()));
         let selling = selling_information.clone();
-        let sell = move |price: &Price, quantity: &Quantity| -> ClosureFuture<AmountPoint> {
+        let sell = move |price: Price, quantity: Quantity| -> ClosureFuture<AmountPoint> {
             let income = (quantity / price).trunc_with_scale(5);
             {
                 let mut selling = selling.lock().unwrap();

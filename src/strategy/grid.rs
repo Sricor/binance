@@ -90,8 +90,8 @@ impl Strategy for Grid {
     async fn trap<P, B, S>(&self, price: &P, buy: &B, sell: &S) -> Result<(), Box<dyn Error>>
     where
         P: Fn() -> ClosureFuture<PricePoint>,
-        B: Fn(&Price, &Amount) -> ClosureFuture<QuantityPoint>,
-        S: Fn(&Price, &Quantity) -> ClosureFuture<AmountPoint>,
+        B: Fn(Price, Amount) -> ClosureFuture<QuantityPoint>,
+        S: Fn(Price, Quantity) -> ClosureFuture<AmountPoint>,
     {
         self.limit.trap(price, buy, sell).await?;
 
