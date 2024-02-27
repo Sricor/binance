@@ -1,32 +1,65 @@
+use std::error::Error;
 use std::sync::Mutex;
 
+use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
-use super::{Amount, Order, Position, Price, PriceSignal, Strategy};
+use super::{
+    Amount, AmountPoint, ClosureFuture, Price, PricePoint, Quantity, QuantityPoint, Range, Strategy,
+};
 
+pub type Position = Option<Quantity>;
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct LimitPosition {
-    pub buying: Price,
-    pub selling: Price,
+    pub buying: Range,
+    pub selling: Range,
     pub investment: Amount,
     pub position: Mutex<Position>,
 }
 
 impl LimitPosition {
-    pub fn new(
-        investment: Amount,
-        buying: Price,
-        selling: Price,
-        position: Option<Position>,
-    ) -> Self {
+    pub fn new(investment: Amount, buying: Range, selling: Range, position: Position) -> Self {
         Self {
             investment,
             buying,
             selling,
-            position: Mutex::new(position.unwrap_or_default()),
+            position: Mutex::new(position),
         }
+    }
+
+    fn predictive_buying(&self, price: &Price) -> Option<Amount> {
+        if self.buying.is_within_inclusive(price) {
+            let position = self.position.lock().unwrap();
+
+            if let None = *position {
+                return Some(self.investment);
+            }
+        }
+
+        None
+    }
+
+    fn predictive_selling(&self, price: &Price) -> Option<Quantity> {
+        if self.selling.is_within_inclusive(price) {
+            let position = self.position.lock().unwrap();
+
+            if let Some(quantity) = *position {
+                return Some(quantity.clone());
+            }
+        }
+
+        None
+    }
+
+    fn update_position(&self, position: Position) {
+        let mut source = self.position.lock().unwrap();
+
+        *source = position;
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Limit {
     positions: Vec<LimitPosition>,
 }
@@ -36,26 +69,331 @@ impl Limit {
         Self { positions }
     }
 
-    pub fn insert_position(&mut self, index: usize, position: LimitPosition) {
-        self.positions.insert(index, position)
+    pub fn positions(&self) -> &Vec<LimitPosition> {
+        &self.positions
     }
 }
 
+impl Strategy for Limit {
+    #[instrument(skip_all)]
+    async fn trap<P, B, S>(&self, price: &P, buy: &B, sell: &S) -> Result<(), Box<dyn Error>>
+    where
+        P: Fn() -> ClosureFuture<PricePoint>,
+        B: Fn(Price, Amount) -> ClosureFuture<QuantityPoint>,
+        S: Fn(Price, Quantity) -> ClosureFuture<AmountPoint>,
+    {
+        let price = match price().await {
+            Ok(v) => v.value().clone(),
+            Err(e) => return Err(e),
+        };
 
-// impl Strategy for Limit {
-//     #[instrument(skip(self))]
-//     async fn predictive_buying(&self, price: &PriceSignal) -> Option<Amount> {
-//     }
+        for limit_position in self.positions.iter() {
+            if let Some(quantity) = limit_position.predictive_selling(&price) {
+                let _ = sell(price, quantity).await?;
+                limit_position.update_position(None);
 
-//     #[instrument(skip(self))]
-//     async fn predictive_selling(&self, price: &PriceSignal) -> Option<Vec<Order>> {
-//     }
+                continue;
+            }
 
-//     #[instrument(skip(self))]
-//     async fn update_position(&self, side: &PositionSide) -> () {
-//     }
+            if let Some(amount) = limit_position.predictive_buying(&price) {
+                let quantity = buy(price, amount).await?;
+                limit_position.update_position(Some(quantity.value().clone()));
 
-//     fn is_completed(&self) -> bool {
-//         false
-//     }
-// }
+                continue;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests_limit_position {
+    use super::super::tests_general::*;
+    use super::*;
+
+    #[tokio::test]
+    #[traced_test]
+    async fn test_predictive_buying() {
+        let limit_position =
+            LimitPosition::new(decimal(50.0), range(0.0, 100.0), range(150.0, 300.0), None);
+        assert_eq!(limit_position.predictive_buying(&decimal(160.0)), None);
+        assert_eq!(limit_position.predictive_buying(&decimal(150.0)), None);
+        assert_eq!(limit_position.predictive_buying(&decimal(125.0)), None);
+        assert_eq!(
+            limit_position.predictive_buying(&decimal(100.0)),
+            Some(decimal(50.0))
+        );
+        assert_eq!(
+            limit_position.predictive_buying(&decimal(99.99)),
+            Some(decimal(50.0))
+        );
+        assert_eq!(
+            limit_position.predictive_buying(&decimal(60.95)),
+            Some(decimal(50.0))
+        );
+
+        let limit_position = LimitPosition::new(
+            decimal(50.0),
+            range(0.0, 100.0),
+            range(150.0, 300.0),
+            Some(decimal(2.0)),
+        );
+        assert_eq!(limit_position.predictive_buying(&decimal(125.0)), None);
+        assert_eq!(limit_position.predictive_buying(&decimal(100.0)), None);
+        assert_eq!(limit_position.predictive_buying(&decimal(99.99)), None);
+        assert_eq!(limit_position.predictive_buying(&decimal(60.95)), None);
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn test_predictive_selling() {
+        let limit_position =
+            LimitPosition::new(decimal(50.0), range(0.0, 100.0), range(150.0, 300.0), None);
+        assert_eq!(limit_position.predictive_selling(&decimal(160.0)), None);
+        assert_eq!(limit_position.predictive_selling(&decimal(125.0)), None);
+        assert_eq!(limit_position.predictive_selling(&decimal(100.0)), None);
+        assert_eq!(limit_position.predictive_selling(&decimal(60.95)), None);
+
+        let limit_position = LimitPosition::new(
+            decimal(50.0),
+            range(0.0, 100.0),
+            range(150.0, 300.0),
+            Some(decimal(2.0)),
+        );
+        assert_eq!(
+            limit_position.predictive_selling(&decimal(160.0)),
+            Some(decimal(2.0))
+        );
+        assert_eq!(
+            limit_position.predictive_selling(&decimal(150.0)),
+            Some(decimal(2.0))
+        );
+        assert_eq!(limit_position.predictive_selling(&decimal(125.0)), None);
+        assert_eq!(limit_position.predictive_selling(&decimal(100.0)), None);
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn test_update_position() {
+        let limit_position =
+            LimitPosition::new(decimal(50.0), range(0.0, 100.0), range(150.0, 300.0), None);
+
+        {
+            limit_position.update_position(Some(decimal(50.0)));
+            let position = limit_position.position.lock().unwrap();
+            assert_eq!(*position, Some(decimal(50.0)));
+        }
+
+        {
+            limit_position.update_position(Some(decimal(25.0)));
+            let position = limit_position.position.lock().unwrap();
+            assert_eq!(*position, Some(decimal(25.0)));
+        }
+
+        {
+            limit_position.update_position(None);
+            let position = limit_position.position.lock().unwrap();
+            assert_eq!(*position, None);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests_limit_trap {
+    use std::sync::atomic::Ordering;
+
+    use tracing_test::traced_test;
+
+    use super::super::tests_general::*;
+    use super::*;
+
+    /// ### Limit Position          
+    /// - Investment Amount:   50.0   
+    /// - Buying     Price:    0.0   - 100.0  
+    /// - Selling    Price:    200.0 - 300.0  
+    /// - Position   Quantity: None    
+    fn single_none_position_limit() -> Limit {
+        let limit_position =
+            LimitPosition::new(decimal(50.0), range(0.0, 100.0), range(200.0, 300.0), None);
+        let result = Limit::with_positions(vec![limit_position]);
+
+        result
+    }
+
+    /// ### Limit Position          
+    /// - Investment Amount:   50.0   
+    /// - Buying     Price:    0.0   - 100.0  
+    /// - Selling    Price:    200.0 - 300.0  
+    /// - Position   Quantity: 2.5    
+    fn single_some_position_limit() -> Limit {
+        let limit_position = LimitPosition::new(
+            decimal(50.0),
+            range(0.0, 100.0),
+            range(200.0, 300.0),
+            Some(decimal(2.5)),
+        );
+        let result = Limit::with_positions(vec![limit_position]);
+
+        result
+    }
+
+    /// ### Limit Position One                            
+    /// - Investment Amount:   10.0                       
+    /// - Buying     Price:    0.0   - 50.0               
+    /// - Selling    Price:    100.0 - 200.0              
+    /// - Position   Quantity: None                       
+    ///                                                   
+    /// ### Limit Position Two                            
+    /// - Investment Amount:   20.0                       
+    /// - Buying     Price:    0.0   - 30.0               
+    /// - Selling    Price:    120.0 - 200.0              
+    /// - Position   Quantity: None                       
+    ///                                                   
+    /// ### Limit Position Three                          
+    /// - Investment Amount:   30.0                       
+    /// - Buying     Price:    0.0   - 80.0               
+    /// - Selling    Price:    150.0 - 200.0              
+    /// - Position   Quantity: None                       
+    ///                                                   
+    /// ### Limit Position Four                           
+    /// - Investment Amount:   40.0                       
+    /// - Buying     Price:    0.0   - 100.0              
+    /// - Selling    Price:    150.0 - 200.0              
+    /// - Position   Quantity: 5.0                        
+    fn multi_position_limit() -> Limit {
+        let limit_position_one =
+            LimitPosition::new(decimal(10.0), range(0.0, 50.0), range(100.0, 200.0), None);
+        let limit_position_two =
+            LimitPosition::new(decimal(20.0), range(0.0, 30.0), range(120.0, 200.0), None);
+        let limit_position_three =
+            LimitPosition::new(decimal(30.0), range(0.0, 80.0), range(150.0, 200.0), None);
+        let limit_position_four = LimitPosition::new(
+            decimal(40.0),
+            range(0.0, 100.0),
+            range(150.0, 200.0),
+            Some(decimal(5.0)),
+        );
+
+        let result = Limit::with_positions(vec![
+            limit_position_one,
+            limit_position_two,
+            limit_position_three,
+            limit_position_four,
+        ]);
+
+        result
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn test_trap_single_some_position() {
+        let trading = simple_trading();
+        let limit = single_some_position_limit();
+
+        let prices = vec![210.0, 200.0, 150.0, 100.0, 90.50];
+        let price = simple_prices(prices.clone());
+        for _ in 0..prices.len() {
+            limit
+                .trap(&price, &trading.buy, &trading.sell)
+                .await
+                .unwrap();
+        }
+
+        {
+            let buying = trading.buying();
+            let selling = trading.selling();
+
+            assert_eq!(selling.quantitys, vec![decimal(2.5)]);
+            assert_eq!(selling.count.load(Ordering::SeqCst), 1);
+
+            assert_eq!(buying.amounts, vec![decimal(50.0)]);
+            assert_eq!(buying.count.load(Ordering::SeqCst), 1);
+        }
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn test_trap_single_none_position() {
+        let trading = simple_trading();
+        let limit = single_none_position_limit();
+
+        let prices = vec![210.0, 200.0, 150.0, 100.0, 90.50];
+        let price = simple_prices(prices.clone());
+        for _ in 0..prices.len() {
+            limit
+                .trap(&price, &trading.buy, &trading.sell)
+                .await
+                .unwrap();
+        }
+
+        {
+            let buying = trading.buying();
+            let selling = trading.selling();
+
+            assert_eq!(selling.quantitys, vec![]);
+            assert_eq!(selling.count.load(Ordering::SeqCst), 0);
+
+            assert_eq!(buying.amounts, vec![decimal(50.0)]);
+            assert_eq!(buying.count.load(Ordering::SeqCst), 1);
+        }
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn test_trap_mix() {
+        let trading = simple_trading();
+        let limit = multi_position_limit();
+
+        let prices = vec![60.5, 30.0, 30.5, 35.5, 50.0, 110.5, 160.5, 15.0];
+        let price = simple_prices(prices.clone());
+        for _ in 0..prices.len() {
+            limit
+                .trap(&price, &trading.buy, &trading.sell)
+                .await
+                .unwrap();
+        }
+
+        {
+            let buying = trading.buying();
+            let selling = trading.selling();
+
+            assert_eq!(buying.count.load(Ordering::SeqCst), 7);
+            assert_eq!(
+                buying.prices,
+                vec![
+                    decimal(60.5),
+                    decimal(30.0),
+                    decimal(30.0),
+                    decimal(15.0),
+                    decimal(15.0),
+                    decimal(15.0),
+                    decimal(15.0)
+                ]
+            );
+            assert_eq!(
+                buying.amounts,
+                vec![
+                    decimal(30.0),
+                    decimal(10.0),
+                    decimal(20.0),
+                    decimal(10.0),
+                    decimal(20.0),
+                    decimal(30.0),
+                    decimal(40.0)
+                ]
+            );
+
+            assert_eq!(selling.count.load(Ordering::SeqCst), 4);
+            assert_eq!(
+                selling.prices,
+                vec![
+                    decimal(110.5),
+                    decimal(160.5),
+                    decimal(160.5),
+                    decimal(160.5)
+                ]
+            );
+        }
+    }
+}
