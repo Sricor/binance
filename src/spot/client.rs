@@ -5,7 +5,6 @@ use binance::{
     api::Binance,
 };
 use rust_decimal::prelude::ToPrimitive;
-use serde::{Deserialize, Serialize};
 
 use super::{error::SpotClientError, Spot, SpotBuying, SpotSelling};
 use crate::{
@@ -178,12 +177,6 @@ impl SpotClient {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum SpotTransactionSide {
-    Buying(SpotBuying),
-    Selling(SpotSelling),
-}
-
 impl Exchanger for SpotClient {
     fn spawn_buy(self: &Arc<Self>) -> impl Fn(Price, Amount) -> ClosureFuture<QuantityPoint> {
         let result = move |price: Price, amount: Amount| -> ClosureFuture<QuantityPoint> {
@@ -193,8 +186,7 @@ impl Exchanger for SpotClient {
             let f = async move {
                 let quantity = client
                     .buy(&price, &buying_quantity)
-                    .await
-                    .unwrap()
+                    .await?
                     .quantity_after_commission;
 
                 Ok(QuantityPoint::new(quantity))
@@ -213,8 +205,7 @@ impl Exchanger for SpotClient {
             let f = async move {
                 let income = client
                     .sell(&price, &quantity)
-                    .await
-                    .unwrap()
+                    .await?
                     .income_after_commission;
 
                 Ok(AmountPoint::new(income))
@@ -227,8 +218,74 @@ impl Exchanger for SpotClient {
     }
 }
 
-// #[cfg(test)]
-// mod tests {
+#[cfg(test)]
+mod tests_count_leak {
+    use super::super::tests_general::*;
+    use super::*;
+
+    fn simple_btc_client() -> SpotClient {
+        SpotClient::new(String::from("null"), String::from("null"), btc_spot(), None)
+    }
+
+    #[tokio::test]
+    async fn test_spwan_count() {
+        let client = Arc::new(simple_btc_client());
+        let buy = client.spawn_buy();
+        assert_eq!(Arc::strong_count(&client), 1);
+
+        let f = buy(decimal(1.0), decimal(20.0));
+        assert_eq!(Arc::strong_count(&client), 2);
+
+        f.await.unwrap();
+        assert_eq!(Arc::strong_count(&client), 1);
+
+        let sell = client.spawn_sell();
+        assert_eq!(Arc::strong_count(&client), 1);
+
+        let f = sell(decimal(1.0), decimal(20.0));
+        assert_eq!(Arc::strong_count(&client), 2);
+
+        f.await.unwrap();
+        assert_eq!(Arc::strong_count(&client), 1);
+
+        let f = sell(decimal(1.0), decimal(20.0));
+        assert_eq!(Arc::strong_count(&client), 2);
+
+        drop(f);
+        assert_eq!(Arc::strong_count(&client), 1);
+    }
+
+    #[tokio::test]
+    async fn test_spwan_multi_count() {
+        let client = Arc::new(simple_btc_client());
+        let number = 10;
+
+        let mut vec = Vec::new();
+
+        for _ in 0..number {
+            vec.push(client.spawn_buy()(decimal(1.0), decimal(20.0)))
+        }
+        assert_eq!(Arc::strong_count(&client), number + 1);
+
+        for i in vec.into_iter() {
+            i.await.unwrap();
+        }
+        assert_eq!(Arc::strong_count(&client), 1);
+
+        let mut vec = Vec::new();
+
+        for _ in 0..number {
+            vec.push(client.spawn_sell()(decimal(1.0), decimal(20.0)))
+        }
+        assert_eq!(Arc::strong_count(&client), number + 1);
+
+        for i in vec.into_iter() {
+            i.await.unwrap();
+        }
+        assert_eq!(Arc::strong_count(&client), 1);
+    }
+}
+
 //     use rust_decimal::prelude::FromPrimitive;
 //     use tracing_test::traced_test;
 
@@ -237,14 +294,8 @@ impl Exchanger for SpotClient {
 //         treasurer::Prosperity,
 //     };
 
-//     use super::*;
-
 //     fn price(value: f64) -> PriceSignal {
 //         PriceSignal::new(decimal(value))
-//     }
-
-//     fn decimal(value: f64) -> Decimal {
-//         Decimal::from_f64(value).unwrap()
 //     }
 
 //     fn to_decimal(value: f64) -> Decimal {
@@ -253,30 +304,6 @@ impl Exchanger for SpotClient {
 
 //     fn new_client(spot: Spot) -> SpotClient {
 //         SpotClient::new("".into(), "".into(), spot, None)
-//     }
-
-//     fn btc_spot() -> Spot {
-//         Spot {
-//             symbol: "BTCUSDT".into(),
-//             transaction_quantity_precision: 5,
-//             quantity_precision: 7, // BTC Precision
-//             amount_precision: 8,   // USDT Precision
-//             minimum_transaction_amount: Decimal::from(5),
-//             buying_commission: Decimal::from_f64(0.001).unwrap(),
-//             selling_commission: Decimal::from_f64(0.001).unwrap(),
-//         }
-//     }
-
-//     fn eth_spot() -> Spot {
-//         Spot {
-//             symbol: "ETHUSDT".into(),
-//             transaction_quantity_precision: 4,
-//             quantity_precision: 7, // ETH Precision
-//             amount_precision: 8,   // USDT Precision
-//             minimum_transaction_amount: Decimal::from(5),
-//             buying_commission: Decimal::from_f64(0.001).unwrap(),
-//             selling_commission: Decimal::from_f64(0.001).unwrap(),
-//         }
 //     }
 
 //     #[tokio::test]

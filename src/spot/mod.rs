@@ -343,3 +343,38 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod tests_general {
+    use rust_decimal::{prelude::FromPrimitive, Decimal};
+
+    use super::*;
+
+    pub(super) fn decimal(value: f64) -> Decimal {
+        Decimal::from_f64(value).unwrap()
+    }
+
+    pub(super) fn btc_spot() -> Spot {
+        Spot {
+            symbol: String::from("BTCUSDT"),
+            transaction_quantity_precision: 5,
+            quantity_precision: 7, // BTC Precision
+            amount_precision: 8,   // USDT Precision
+            minimum_transaction_amount: decimal(5.0),
+            buying_commission: decimal(0.001),
+            selling_commission: decimal(0.001),
+        }
+    }
+
+    pub(super) fn eth_spot() -> Spot {
+        Spot {
+            symbol: String::from("ETHUSDT"),
+            transaction_quantity_precision: 4,
+            quantity_precision: 7, // ETH Precision
+            amount_precision: 8,   // USDT Precision
+            minimum_transaction_amount: decimal(5.0),
+            buying_commission: decimal(0.001),
+            selling_commission: decimal(0.001),
+        }
+    }
+}
