@@ -67,8 +67,8 @@ impl SpotClient {
         }
     }
 
-    pub async fn buy(&self, price: &Price, quantity: &Quantity) -> SpotClientResult<SpotBuying> {
-        let buying_quantity = self.spot.transaction_quantity_with_precision(quantity);
+    pub async fn buy(&self, price: &Price, amount: &Amount) -> SpotClientResult<SpotBuying> {
+        let buying_quantity = self.spot.buying_quantity_by_amount(price, amount);
         self.is_allow_transaction(price, &buying_quantity)?;
 
         if self.is_production() {
@@ -185,7 +185,7 @@ impl SpotClient {
             .is_reached_minimum_transaction_limit(price, quantity)
         {
             return Err(SpotClientError::Trading(String::from(
-                "minimum transaction amount not reached",
+                "Minimum transaction amount not reached",
             )));
         }
 
@@ -196,14 +196,10 @@ impl SpotClient {
 impl Exchanger for SpotClient {
     fn spawn_buy(self: &Arc<Self>) -> impl Fn(Price, Amount) -> ClosureFuture<QuantityPoint> {
         let result = move |price: Price, amount: Amount| -> ClosureFuture<QuantityPoint> {
-            let buying_quantity = self.spot.buying_quantity_by_amount(&price, &amount);
-            let client = self.clone();
+            let client: Arc<SpotClient> = self.clone();
 
             let f = async move {
-                let quantity = client
-                    .buy(&price, &buying_quantity)
-                    .await?
-                    .quantity_after_commission;
+                let quantity = client.buy(&price, &amount).await?.quantity_after_commission;
 
                 Ok(QuantityPoint::new(quantity))
             };
@@ -333,56 +329,111 @@ mod tests_client {
     async fn test_buying() {
         let client = simple_client(btc_spot());
         let buying = client
-            .buy(&decimal(43145.42), &decimal(0.0015))
+            .buy(&decimal(43145.42), &decimal(500.0))
             .await
             .unwrap();
         let assert = SpotBuying {
             price: decimal(43145.42),
-            spent: decimal(64.71813),
-            quantity: decimal(0.0015),
-            quantity_after_commission: decimal(0.0014985),
+            spent: decimal(499.6239636),
+            quantity: decimal(0.01158),
+            quantity_after_commission: decimal(0.0115684),
         };
         assert_eq!(buying, assert);
 
         let client = simple_client(btc_spot());
         let buying = client
-            .buy(&decimal(43145.42), &decimal(0.00159858))
+            .buy(&decimal(43145.42), &decimal(1000.0))
             .await
             .unwrap();
         let assert = SpotBuying {
             price: decimal(43145.42),
-            spent: decimal(68.6012178),
-            quantity: decimal(0.00159),
-            quantity_after_commission: decimal(0.0015884),
+            spent: decimal(999.6793814),
+            quantity: decimal(0.02317),
+            quantity_after_commission: decimal(0.0231468),
         };
         assert_eq!(buying, assert);
 
         let client = simple_client(eth_spot());
         let buying = client
-            .buy(&decimal(2596.04), &decimal(0.079))
+            .buy(&decimal(2596.04), &decimal(600.50))
             .await
             .unwrap();
         let assert = SpotBuying {
             price: decimal(2596.04),
-            spent: decimal(205.087160),
-            quantity: decimal(0.0790),
-            quantity_after_commission: decimal(0.0789210),
+            spent: decimal(600.464052),
+            quantity: decimal(0.2313),
+            quantity_after_commission: decimal(0.2310687),
         };
         assert_eq!(buying, assert);
 
         let client = simple_client(eth_spot());
         let buying = client
-            .buy(&decimal(2596.04), &decimal(0.0791531))
+            .buy(&decimal(2596.04), &decimal(100.0))
             .await
             .unwrap();
         let assert = SpotBuying {
             price: decimal(2596.04),
-            spent: decimal(205.346764),
-            quantity: decimal(0.0791),
-            quantity_after_commission: decimal(0.0790209),
+            spent: decimal(99.947540),
+            quantity: decimal(0.0385),
+            quantity_after_commission: decimal(0.0384615),
         };
         assert_eq!(buying, assert);
     }
+
+    // #[tokio::test]
+    // async fn test_buying_with_quantity() {
+    //     let client = simple_client(btc_spot());
+    //     let buying = client
+    //         .buy(&decimal(43145.42), &decimal(0.0015))
+    //         .await
+    //         .unwrap();
+    //     let assert = SpotBuying {
+    //         price: decimal(43145.42),
+    //         spent: decimal(64.71813),
+    //         quantity: decimal(0.0015),
+    //         quantity_after_commission: decimal(0.0014985),
+    //     };
+    //     assert_eq!(buying, assert);
+
+    //     let client = simple_client(btc_spot());
+    //     let buying = client
+    //         .buy(&decimal(43145.42), &decimal(0.00159858))
+    //         .await
+    //         .unwrap();
+    //     let assert = SpotBuying {
+    //         price: decimal(43145.42),
+    //         spent: decimal(68.6012178),
+    //         quantity: decimal(0.00159),
+    //         quantity_after_commission: decimal(0.0015884),
+    //     };
+    //     assert_eq!(buying, assert);
+
+    //     let client = simple_client(eth_spot());
+    //     let buying = client
+    //         .buy(&decimal(2596.04), &decimal(0.079))
+    //         .await
+    //         .unwrap();
+    //     let assert = SpotBuying {
+    //         price: decimal(2596.04),
+    //         spent: decimal(205.087160),
+    //         quantity: decimal(0.0790),
+    //         quantity_after_commission: decimal(0.0789210),
+    //     };
+    //     assert_eq!(buying, assert);
+
+    //     let client = simple_client(eth_spot());
+    //     let buying = client
+    //         .buy(&decimal(2596.04), &decimal(0.0791531))
+    //         .await
+    //         .unwrap();
+    //     let assert = SpotBuying {
+    //         price: decimal(2596.04),
+    //         spent: decimal(205.346764),
+    //         quantity: decimal(0.0791),
+    //         quantity_after_commission: decimal(0.0790209),
+    //     };
+    //     assert_eq!(buying, assert);
+    // }
 
     #[tokio::test]
     #[traced_test]
