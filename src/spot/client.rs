@@ -336,9 +336,9 @@ mod tests_client {
             .unwrap();
         let assert = SpotBuying {
             price: decimal(43145.42),
-            spent: decimal(64.71813),
-            quantity: decimal(0.0015),
-            quantity_after_commission: decimal(0.0014985),
+            spent: decimal(499.6239636),
+            quantity: decimal(0.01158),
+            quantity_after_commission: decimal(0.0115684),
             timestamp: 0,
         };
         assert_eq!(buying, assert);
@@ -350,9 +350,9 @@ mod tests_client {
             .unwrap();
         let assert = SpotBuying {
             price: decimal(43145.42),
-            spent: decimal(68.6012178),
-            quantity: decimal(0.00159),
-            quantity_after_commission: decimal(0.0015884),
+            spent: decimal(999.6793814),
+            quantity: decimal(0.02317),
+            quantity_after_commission: decimal(0.0231468),
             timestamp: 0,
         };
         assert_eq!(buying, assert);
@@ -364,9 +364,9 @@ mod tests_client {
             .unwrap();
         let assert = SpotBuying {
             price: decimal(2596.04),
-            spent: decimal(205.087160),
-            quantity: decimal(0.0790),
-            quantity_after_commission: decimal(0.0789210),
+            spent: decimal(600.464052),
+            quantity: decimal(0.2313),
+            quantity_after_commission: decimal(0.2310687),
             timestamp: 0,
         };
         assert_eq!(buying, assert);
@@ -378,9 +378,9 @@ mod tests_client {
             .unwrap();
         let assert = SpotBuying {
             price: decimal(2596.04),
-            spent: decimal(205.346764),
-            quantity: decimal(0.0791),
-            quantity_after_commission: decimal(0.0790209),
+            spent: decimal(99.947540),
+            quantity: decimal(0.0385),
+            quantity_after_commission: decimal(0.0384615),
             timestamp: 0,
         };
         assert_eq!(buying, assert);
