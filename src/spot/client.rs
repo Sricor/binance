@@ -7,7 +7,7 @@ use binance::{
 };
 use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
 
-use super::{error::SpotClientError, Spot, SpotBuying, SpotSelling};
+use super::{error::SpotClientError, timestamp_millis, Spot, SpotBuying, SpotSelling};
 use crate::{
     noun::*,
     strategy::{AmountPoint, ClosureFuture, Exchanger, PricePoint, QuantityPoint},
@@ -164,6 +164,7 @@ impl SpotClient {
             price: price.clone(),
             quantity: buying_quantity.clone(),
             quantity_after_commission,
+            timestamp: timestamp_millis(),
         }
     }
 
@@ -176,6 +177,7 @@ impl SpotClient {
             quantity: selling_quantity.clone(),
             income: selling_income,
             income_after_commission,
+            timestamp: timestamp_millis(),
         }
     }
 
@@ -341,6 +343,7 @@ mod tests_client {
             spent: decimal(64.71813),
             quantity: decimal(0.0015),
             quantity_after_commission: decimal(0.0014985),
+            timestamp: 0,
         };
         assert_eq!(buying, assert);
 
@@ -354,6 +357,7 @@ mod tests_client {
             spent: decimal(68.6012178),
             quantity: decimal(0.00159),
             quantity_after_commission: decimal(0.0015884),
+            timestamp: 0,
         };
         assert_eq!(buying, assert);
 
@@ -367,6 +371,7 @@ mod tests_client {
             spent: decimal(205.087160),
             quantity: decimal(0.0790),
             quantity_after_commission: decimal(0.0789210),
+            timestamp: 0,
         };
         assert_eq!(buying, assert);
 
@@ -380,6 +385,7 @@ mod tests_client {
             spent: decimal(205.346764),
             quantity: decimal(0.0791),
             quantity_after_commission: decimal(0.0790209),
+            timestamp: 0,
         };
         assert_eq!(buying, assert);
     }
@@ -397,6 +403,7 @@ mod tests_client {
             income: decimal(150.038939),
             income_after_commission: decimal(149.88890006),
             quantity: decimal(0.00349),
+            timestamp: 0,
         };
         assert_eq!(buying, assert);
 
@@ -410,6 +417,7 @@ mod tests_client {
             income: decimal(150.038939),
             income_after_commission: decimal(149.88890006),
             quantity: decimal(0.00349),
+            timestamp: 0,
         };
         assert_eq!(buying, assert);
 
@@ -423,6 +431,7 @@ mod tests_client {
             income: decimal(280.052256),
             income_after_commission: decimal(279.77220374),
             quantity: decimal(0.1056),
+            timestamp: 0,
         };
         assert_eq!(buying, assert);
 
@@ -436,6 +445,7 @@ mod tests_client {
             income: decimal(278.726251),
             income_after_commission: decimal(278.44752475),
             quantity: decimal(0.1051),
+            timestamp: 0,
         };
         assert_eq!(buying, assert);
     }
