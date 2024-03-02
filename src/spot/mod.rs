@@ -1,3 +1,4 @@
+use chrono::Utc;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
@@ -72,7 +73,7 @@ impl Spot {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpotBuying {
     /// Buying price
     pub price: Price,
@@ -85,9 +86,20 @@ pub struct SpotBuying {
 
     /// Buying quantity after commission, also the actual quantity held
     pub quantity_after_commission: Quantity,
+
+    pub timestamp: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+impl PartialEq for SpotBuying {
+    fn eq(&self, other: &Self) -> bool {
+        self.price == other.price
+            && self.quantity == other.quantity
+            && self.spent == other.spent
+            && self.quantity_after_commission == other.quantity_after_commission
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpotSelling {
     /// Selling price
     pub price: Price,
@@ -100,6 +112,17 @@ pub struct SpotSelling {
 
     /// Income gained after commission selling, also the actual income recorded
     pub income_after_commission: Amount,
+
+    pub timestamp: i64,
+}
+
+impl PartialEq for SpotSelling {
+    fn eq(&self, other: &Self) -> bool {
+        self.price == other.price
+            && self.quantity == other.quantity
+            && self.income == other.income
+            && self.income_after_commission == other.income_after_commission
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -145,6 +168,12 @@ impl SpotTransaction {
     }
 }
 
+fn timestamp_millis() -> i64 {
+    let now = Utc::now();
+
+    now.timestamp_millis()
+}
+
 #[cfg(test)]
 mod tests {
     use rust_decimal::prelude::FromPrimitive;
@@ -181,6 +210,7 @@ mod tests {
             quantity: Decimal::from_f64(1.49).unwrap(),
             spent: Decimal::from_f64(149.3427).unwrap(),
             quantity_after_commission: Decimal::from_f64(1.48851).unwrap(),
+            timestamp: 0,
         }
     }
 
@@ -190,6 +220,7 @@ mod tests {
             quantity: Decimal::from_f64(1.48).unwrap(),
             income: Decimal::from_f64(166.6184).unwrap(),
             income_after_commission: Decimal::from_f64(166.4517816).unwrap(),
+            timestamp: 0,
         }
     }
 
@@ -199,6 +230,7 @@ mod tests {
             quantity: Decimal::from_f64(2.59248).unwrap(),
             spent: Decimal::from_f64(519.9996384).unwrap(),
             quantity_after_commission: Decimal::from_f64(2.5898875).unwrap(),
+            timestamp: 0,
         }
     }
 
@@ -208,6 +240,7 @@ mod tests {
             quantity: Decimal::from_f64(2.58988).unwrap(),
             income: Decimal::from_f64(291.8535772).unwrap(),
             income_after_commission: Decimal::from_f64(291.56172362).unwrap(),
+            timestamp: 0,
         }
     }
 
