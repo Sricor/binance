@@ -1,4 +1,6 @@
 use std::error::Error;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -16,6 +18,9 @@ pub struct LimitPosition {
     pub selling: Range,
     pub investment: Amount,
     pub position: Mutex<Position>,
+
+    buying_count: AtomicUsize,
+    selling_count: AtomicUsize,
 }
 
 impl LimitPosition {
@@ -23,9 +28,19 @@ impl LimitPosition {
         Self {
             investment,
             buying,
+            buying_count: AtomicUsize::default(),
             selling,
+            selling_count: AtomicUsize::default(),
             position: Mutex::new(position),
         }
+    }
+
+    pub fn selling_count(&self) -> usize {
+        self.selling_count.load(Ordering::Relaxed)
+    }
+
+    pub fn buying_count(&self) -> usize {
+        self.buying_count.load(Ordering::Relaxed)
     }
 
     fn predictive_buying(&self, price: &Price) -> Option<Amount> {
@@ -56,6 +71,14 @@ impl LimitPosition {
         let mut source = self.position.lock().unwrap();
 
         *source = position;
+    }
+
+    fn fetch_add_buying_count(&self, val: usize) {
+        self.buying_count.fetch_add(val, Ordering::Relaxed);
+    }
+
+    fn fetch_add_selling_count(&self, val: usize) {
+        self.selling_count.fetch_add(val, Ordering::Relaxed);
     }
 }
 
@@ -91,6 +114,7 @@ impl Strategy for Limit {
             if let Some(quantity) = limit_position.predictive_selling(&price) {
                 let _ = sell(price, quantity).await?;
                 limit_position.update_position(None);
+                limit_position.fetch_add_selling_count(1);
 
                 continue;
             }
@@ -98,6 +122,7 @@ impl Strategy for Limit {
             if let Some(amount) = limit_position.predictive_buying(&price) {
                 let quantity = buy(price, amount).await?;
                 limit_position.update_position(Some(quantity.value().clone()));
+                limit_position.fetch_add_buying_count(1);
 
                 continue;
             }
@@ -306,9 +331,11 @@ mod tests_limit_trap {
 
             assert_eq!(selling.quantitys, vec![decimal(2.5)]);
             assert_eq!(selling.count.load(Ordering::SeqCst), 1);
+            assert_eq!(limit.positions[0].selling_count(), 1);
 
             assert_eq!(buying.amounts, vec![decimal(50.0)]);
             assert_eq!(buying.count.load(Ordering::SeqCst), 1);
+            assert_eq!(limit.positions[0].buying_count(), 1);
         }
     }
 
@@ -333,9 +360,11 @@ mod tests_limit_trap {
 
             assert_eq!(selling.quantitys, vec![]);
             assert_eq!(selling.count.load(Ordering::SeqCst), 0);
+            assert_eq!(limit.positions[0].selling_count(), 0);
 
             assert_eq!(buying.amounts, vec![decimal(50.0)]);
             assert_eq!(buying.count.load(Ordering::SeqCst), 1);
+            assert_eq!(limit.positions[0].buying_count(), 1);
         }
     }
 
@@ -359,6 +388,10 @@ mod tests_limit_trap {
             let selling = trading.selling();
 
             assert_eq!(buying.count.load(Ordering::SeqCst), 7);
+            assert_eq!(limit.positions[0].buying_count(), 2);
+            assert_eq!(limit.positions[1].buying_count(), 2);
+            assert_eq!(limit.positions[2].buying_count(), 2);
+            assert_eq!(limit.positions[3].buying_count(), 1);
             assert_eq!(
                 buying.prices,
                 vec![
@@ -385,6 +418,10 @@ mod tests_limit_trap {
             );
 
             assert_eq!(selling.count.load(Ordering::SeqCst), 4);
+            assert_eq!(limit.positions[0].selling_count(), 1);
+            assert_eq!(limit.positions[1].selling_count(), 1);
+            assert_eq!(limit.positions[2].selling_count(), 1);
+            assert_eq!(limit.positions[3].selling_count(), 1);
             assert_eq!(
                 selling.prices,
                 vec![
