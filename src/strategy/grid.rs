@@ -17,7 +17,7 @@ pub struct Grid {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct GridOptions {
-    pub stop_loss: Option<Decimal>,
+    pub stop_loss: Option<Price>,
 }
 
 impl Grid {
@@ -84,6 +84,14 @@ impl Grid {
 
         result
     }
+
+    fn is_reached_stop_loss(&self, price: &Price) -> bool {
+        if let Some(v) = &self.options.stop_loss {
+            return price < v;
+        }
+
+        false
+    }
 }
 
 impl Strategy for Grid {
@@ -93,6 +101,11 @@ impl Strategy for Grid {
         B: Fn(Price, Amount) -> ClosureFuture<QuantityPoint>,
         S: Fn(Price, Quantity) -> ClosureFuture<AmountPoint>,
     {
+        let price_point = price().await?;
+        if self.is_reached_stop_loss(price_point.value()) {
+            // TODO
+        }
+
         self.limit.trap(price, buy, sell).await?;
 
         Ok(())
@@ -101,8 +114,6 @@ impl Strategy for Grid {
 
 #[cfg(test)]
 mod tests_grid {
-    use std::sync::Mutex;
-
     use super::super::tests_general::*;
     use super::*;
 
@@ -119,41 +130,41 @@ mod tests_grid {
     fn test_split_limit_position() {
         let positions = Grid::split(decimal(100.0), Range(decimal(50.0), decimal(90.0)), 4);
         let target = vec![
-            LimitPosition {
-                investment: decimal(33.333333),
-                buying: Range(decimal(50.0), decimal(55.0)),
-                selling: Range(decimal(65.0), decimal(70.0)),
-                position: Mutex::new(None),
-            },
-            LimitPosition {
-                investment: decimal(33.333333),
-                buying: Range(decimal(60.0), decimal(65.0)),
-                selling: Range(decimal(75.0), decimal(80.0)),
-                position: Mutex::new(None),
-            },
-            LimitPosition {
-                investment: decimal(33.333333),
-                buying: Range(decimal(70.0), decimal(75.0)),
-                selling: Range(decimal(85.0), decimal(90.0)),
-                position: Mutex::new(None),
-            },
+            LimitPosition::new(
+                decimal(33.333333),
+                Range(decimal(50.0), decimal(55.0)),
+                Range(decimal(65.0), decimal(70.0)),
+                None,
+            ),
+            LimitPosition::new(
+                decimal(33.333333),
+                Range(decimal(60.0), decimal(65.0)),
+                Range(decimal(75.0), decimal(80.0)),
+                None,
+            ),
+            LimitPosition::new(
+                decimal(33.333333),
+                Range(decimal(70.0), decimal(75.0)),
+                Range(decimal(85.0), decimal(90.0)),
+                None,
+            ),
         ];
         assert_eq!(positions, target);
 
         let positions = Grid::split(decimal(100.0), Range(decimal(50.0), decimal(90.0)), 3);
         let target = vec![
-            LimitPosition {
-                investment: decimal(50.0),
-                buying: Range(decimal(50.0), decimal(56.66666650)),
-                selling: Range(decimal(69.99999950), decimal(76.666666)),
-                position: Mutex::new(None),
-            },
-            LimitPosition {
-                investment: decimal(50.0),
-                buying: Range(decimal(63.333333), decimal(69.99999950)),
-                selling: Range(decimal(83.33333250), decimal(89.999999)),
-                position: Mutex::new(None),
-            },
+            LimitPosition::new(
+                decimal(50.0),
+                Range(decimal(50.0), decimal(56.66666650)),
+                Range(decimal(69.99999950), decimal(76.666666)),
+                None,
+            ),
+            LimitPosition::new(
+                decimal(50.0),
+                Range(decimal(63.333333), decimal(69.99999950)),
+                Range(decimal(83.33333250), decimal(89.999999)),
+                None,
+            ),
         ];
         assert_eq!(positions, target);
     }
