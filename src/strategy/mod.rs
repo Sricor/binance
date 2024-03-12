@@ -43,7 +43,8 @@ impl Range {
 }
 
 pub type ClosureFuture<T> =
-    Pin<Box<dyn Future<Output = Result<T, Box<dyn Error + Send + Sync>>> + Send>>;
+    Pin<Box<dyn Future<Output = Result<T, Box<dyn Error + Send + Sync>>> + Send + Sync>>;
+
 
 pub trait Strategy {
     fn trap<P, B, S>(
