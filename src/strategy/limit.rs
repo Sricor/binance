@@ -3,6 +3,7 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
@@ -47,9 +48,16 @@ impl LimitPosition {
         if self.buying.is_within_inclusive(price) {
             let position = self.position.lock().unwrap();
 
-            if let None = *position {
-                return Some(self.investment);
-            }
+            return match *position {
+                Some(pos) => {
+                    if pos <= Decimal::ZERO {
+                        Some(self.investment)
+                    } else {
+                        None
+                    }
+                },
+                None => Some(self.investment)
+            };
         }
 
         None
