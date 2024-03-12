@@ -95,7 +95,12 @@ impl Grid {
 }
 
 impl Strategy for Grid {
-    async fn trap<P, B, S>(&self, price: &P, buy: &B, sell: &S) -> Result<(), Box<dyn Error>>
+    async fn trap<P, B, S>(
+        &self,
+        price: &P,
+        buy: &B,
+        sell: &S,
+    ) -> Result<(), Box<dyn Error + Send + Sync>>
     where
         P: Fn() -> ClosureFuture<PricePoint>,
         B: Fn(Price, Amount) -> ClosureFuture<QuantityPoint>,
