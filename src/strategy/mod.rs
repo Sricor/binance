@@ -42,7 +42,8 @@ impl Range {
     }
 }
 
-pub type ClosureFuture<T> = Pin<Box<dyn Future<Output = Result<T, Box<dyn Error>>> + Send>>;
+pub type ClosureFuture<T> =
+    Pin<Box<dyn Future<Output = Result<T, Box<dyn Error + Send + Sync>>> + Send>>;
 
 pub trait Strategy {
     fn trap<P, B, S>(
@@ -50,7 +51,7 @@ pub trait Strategy {
         price: &P,
         buy: &B,
         sell: &S,
-    ) -> impl Future<Output = Result<(), Box<dyn Error>>>
+    ) -> impl Future<Output = Result<(), Box<dyn Error + Send + Sync>>>
     where
         P: Fn() -> ClosureFuture<PricePoint>,
         B: Fn(Price, Amount) -> ClosureFuture<QuantityPoint>,
