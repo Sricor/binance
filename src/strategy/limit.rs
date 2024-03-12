@@ -43,7 +43,7 @@ impl LimitPosition {
         self.buying_count.load(Ordering::Relaxed)
     }
 
-    fn predictive_buying(&self, price: &Price) -> Option<Amount> {
+    pub fn predictive_buying(&self, price: &Price) -> Option<Amount> {
         if self.buying.is_within_inclusive(price) {
             let position = self.position.lock().unwrap();
 
@@ -55,7 +55,7 @@ impl LimitPosition {
         None
     }
 
-    fn predictive_selling(&self, price: &Price) -> Option<Quantity> {
+    pub fn predictive_selling(&self, price: &Price) -> Option<Quantity> {
         if self.selling.is_within_inclusive(price) {
             let position = self.position.lock().unwrap();
 
@@ -67,7 +67,7 @@ impl LimitPosition {
         None
     }
 
-    fn update_position(&self, position: Position) {
+    pub fn update_position(&self, position: Position) {
         let mut source = self.position.lock().unwrap();
 
         *source = position;

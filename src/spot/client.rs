@@ -908,7 +908,6 @@ mod tests_client_spawn {
 
 #[cfg(test)]
 mod tests_client_limit {
-    use tracing::info;
     use tracing_test::traced_test;
 
     use crate::strategy::Strategy;
