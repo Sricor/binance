@@ -871,3 +871,82 @@ mod tests_client {
 //         assert_eq!(treasurer.balance().await, to_decimal(9.66898845));
 //     }
 // }
+
+#[cfg(test)]
+mod tests_client_spawn {
+    use tracing_test::traced_test;
+
+    use super::super::tests_general::*;
+    use super::*;
+
+    fn simple_client(spot: Spot) -> SpotClient {
+        SpotClient::new(String::from("null"), String::from("null"), spot, None)
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn test_spawn_buy() {
+        let client = Arc::new(simple_client(btc_spot()));
+
+        let quantity_point = client.spawn_buy()(decimal(72000.0), decimal(1000.0))
+            .await
+            .unwrap();
+        assert_eq!(quantity_point.value(), &decimal(0.0138661))
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn test_spawn_sell() {
+        let client = Arc::new(simple_client(btc_spot()));
+
+        let quantity_point = client.spawn_sell()(decimal(72000.0), decimal(0.0138661))
+            .await
+            .unwrap();
+        assert_eq!(quantity_point.value(), &decimal(996.92208000))
+    }
+}
+
+#[cfg(test)]
+mod tests_client_limit {
+    use tracing::info;
+    use tracing_test::traced_test;
+
+    use crate::strategy::Strategy;
+
+    use super::super::tests_general::*;
+    use super::*;
+
+    fn simple_client(spot: Spot) -> SpotClient {
+        SpotClient::new(String::from("null"), String::from("null"), spot, None)
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn test_spawn() {
+        use crate::strategy::limit::{Limit, LimitPosition};
+        use crate::strategy::tests_general::simple_prices;
+        use crate::strategy::Range;
+
+        let client = Arc::new(simple_client(btc_spot()));
+        let buy = client.spawn_buy();
+        let sell = client.spawn_sell();
+
+        let prices = vec![50.0, 60.0, 70.0, 90.0, 100.0];
+        let price = simple_prices(prices.clone());
+
+        let positions = LimitPosition::new(
+            decimal(1000.0),
+            Range(decimal(60.0), decimal(70.0)),
+            Range(decimal(90.0), decimal(100.0)),
+            None,
+        );
+        let limit = Limit::with_positions(vec![positions]);
+
+        for _ in prices.iter() {
+            limit.trap(&price, &buy, &sell).await.unwrap();
+        }
+
+        assert_eq!(limit.positions()[0].buying_count(), 1);
+        assert_eq!(limit.positions()[0].selling_count(), 1);
+    }
+}

@@ -45,7 +45,6 @@ impl Range {
 pub type ClosureFuture<T> =
     Pin<Box<dyn Future<Output = Result<T, Box<dyn Error + Send + Sync>>> + Send + Sync>>;
 
-
 pub trait Strategy {
     fn trap<P, B, S>(
         &self,
@@ -141,7 +140,25 @@ fn timestamp_millis() -> i64 {
 }
 
 #[cfg(test)]
-mod tests_general {
+mod tests_range {
+    use super::*;
+    use tests_general::*;
+
+    #[test]
+    fn test_is_is_within_inclusive() {
+        assert_eq!(
+            Range(decimal(60.0), decimal(80.0)).is_within_inclusive(&decimal(70.0)),
+            true
+        );
+        assert_eq!(
+            Range(decimal(71880.0), decimal(72000.0)).is_within_inclusive(&decimal(72000.0)),
+            true
+        );
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod tests_general {
     use std::borrow::BorrowMut;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex, MutexGuard};
@@ -240,7 +257,7 @@ mod tests_general {
         result
     }
 
-    pub(super) fn simple_prices(prices: Vec<f64>) -> impl Fn() -> ClosureFuture<PricePoint> {
+    pub(crate) fn simple_prices(prices: Vec<f64>) -> impl Fn() -> ClosureFuture<PricePoint> {
         let iter = Mutex::new(prices.into_iter());
         let price = move || -> ClosureFuture<PricePoint> {
             let item = iter.lock().unwrap().borrow_mut().next().unwrap();
