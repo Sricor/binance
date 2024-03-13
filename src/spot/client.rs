@@ -10,7 +10,7 @@ use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
 use super::{error::SpotClientError, timestamp_millis, Spot, SpotBuying, SpotSelling};
 use crate::{
     noun::*,
-    strategy::{AmountPoint, ClosureFuture, Exchanger, PricePoint, QuantityPoint},
+    strategy::{AmountPoint, Exchanger, PinFutureResult, PricePoint, QuantityPoint},
 };
 
 type SpotClientResult<T> = Result<T, SpotClientError>;
@@ -196,8 +196,8 @@ impl SpotClient {
 }
 
 impl Exchanger for SpotClient {
-    fn spawn_buy(self: &Arc<Self>) -> impl Fn(Price, Amount) -> ClosureFuture<QuantityPoint> {
-        let result = move |price: Price, amount: Amount| -> ClosureFuture<QuantityPoint> {
+    fn spawn_buy(self: &Arc<Self>) -> impl Fn(Price, Amount) -> PinFutureResult<QuantityPoint> {
+        let result = move |price: Price, amount: Amount| -> PinFutureResult<QuantityPoint> {
             let client: Arc<SpotClient> = self.clone();
 
             let f = async move {
@@ -212,8 +212,8 @@ impl Exchanger for SpotClient {
         result
     }
 
-    fn spawn_sell(self: &Arc<Self>) -> impl Fn(Price, Quantity) -> ClosureFuture<AmountPoint> {
-        let result = move |price: Price, quantity: Quantity| -> ClosureFuture<AmountPoint> {
+    fn spawn_sell(self: &Arc<Self>) -> impl Fn(Price, Quantity) -> PinFutureResult<AmountPoint> {
+        let result = move |price: Price, quantity: Quantity| -> PinFutureResult<AmountPoint> {
             let client = self.clone();
 
             let f = async move {
@@ -231,8 +231,8 @@ impl Exchanger for SpotClient {
         result
     }
 
-    fn spawn_price(self: &Arc<Self>) -> impl Fn() -> ClosureFuture<PricePoint> {
-        let result = move || -> ClosureFuture<PricePoint> {
+    fn spawn_price(self: &Arc<Self>) -> impl Fn() -> PinFutureResult<PricePoint> {
+        let result = move || -> PinFutureResult<PricePoint> {
             let client = self.clone();
 
             let f = async move {

@@ -8,7 +8,8 @@ use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
 use super::{
-    Amount, AmountPoint, ClosureFuture, Price, PricePoint, Quantity, QuantityPoint, Range, Strategy,
+    Amount, AmountPoint, PinFutureResult, Price, PricePoint, Quantity, QuantityPoint, Range,
+    Strategy,
 };
 
 pub type Position = Option<Quantity>;
@@ -118,9 +119,9 @@ impl Strategy for Limit {
         sell: &S,
     ) -> Result<(), Box<dyn Error + Send + Sync>>
     where
-        P: Fn() -> ClosureFuture<PricePoint>,
-        B: Fn(Price, Amount) -> ClosureFuture<QuantityPoint>,
-        S: Fn(Price, Quantity) -> ClosureFuture<AmountPoint>,
+        P: Fn() -> PinFutureResult<PricePoint>,
+        B: Fn(Price, Amount) -> PinFutureResult<QuantityPoint>,
+        S: Fn(Price, Quantity) -> PinFutureResult<AmountPoint>,
     {
         let price = match price().await {
             Ok(v) => v.value().clone(),
