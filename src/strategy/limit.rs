@@ -46,17 +46,17 @@ impl LimitPosition {
 
     pub fn predictive_buying(&self, price: &Price) -> Option<Amount> {
         if self.buying.is_within_inclusive(price) {
-            let position = self.position.lock().unwrap();
+            let position = self.position.lock().ok()?;
 
             return match *position {
                 Some(pos) => {
-                    if pos <= Decimal::ZERO {
+                    if pos == Decimal::ZERO {
                         Some(self.investment)
                     } else {
                         None
                     }
-                },
-                None => Some(self.investment)
+                }
+                None => Some(self.investment),
             };
         }
 
@@ -65,9 +65,13 @@ impl LimitPosition {
 
     pub fn predictive_selling(&self, price: &Price) -> Option<Quantity> {
         if self.selling.is_within_inclusive(price) {
-            let position = self.position.lock().unwrap();
+            let position = self.position.lock().ok()?;
 
             if let Some(quantity) = *position {
+                if quantity == Decimal::ZERO {
+                    return None;
+                }
+
                 return Some(quantity.clone());
             }
         }
@@ -263,6 +267,23 @@ mod tests_limit_trap {
     /// - Investment Amount:   50.0   
     /// - Buying     Price:    0.0   - 100.0  
     /// - Selling    Price:    200.0 - 300.0  
+    /// - Position   Quantity: Some(0)    
+    fn single_some_empty_position_limit() -> Limit {
+        let limit_position = LimitPosition::new(
+            decimal(50.0),
+            range(0.0, 100.0),
+            range(200.0, 300.0),
+            Some(decimal(0.0)),
+        );
+        let result = Limit::with_positions(vec![limit_position]);
+
+        result
+    }
+
+    /// ### Limit Position          
+    /// - Investment Amount:   50.0   
+    /// - Buying     Price:    0.0   - 100.0  
+    /// - Selling    Price:    200.0 - 300.0  
     /// - Position   Quantity: 2.5    
     fn single_some_position_limit() -> Limit {
         let limit_position = LimitPosition::new(
@@ -357,6 +378,35 @@ mod tests_limit_trap {
     async fn test_trap_single_none_position() {
         let trading = simple_trading();
         let limit = single_none_position_limit();
+
+        let prices = vec![210.0, 200.0, 150.0, 100.0, 90.50];
+        let price = simple_prices(prices.clone());
+        for _ in 0..prices.len() {
+            limit
+                .trap(&price, &trading.buy, &trading.sell)
+                .await
+                .unwrap();
+        }
+
+        {
+            let buying = trading.buying();
+            let selling = trading.selling();
+
+            assert_eq!(selling.quantitys, vec![]);
+            assert_eq!(selling.count.load(Ordering::SeqCst), 0);
+            assert_eq!(limit.positions[0].selling_count(), 0);
+
+            assert_eq!(buying.amounts, vec![decimal(50.0)]);
+            assert_eq!(buying.count.load(Ordering::SeqCst), 1);
+            assert_eq!(limit.positions[0].buying_count(), 1);
+        }
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn test_trap_single_some_empty_position() {
+        let trading = simple_trading();
+        let limit = single_some_empty_position_limit();
 
         let prices = vec![210.0, 200.0, 150.0, 100.0, 90.50];
         let price = simple_prices(prices.clone());
