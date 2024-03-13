@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     limit::{Limit, LimitPosition},
-    AmountPoint, ClosureFuture, PricePoint, QuantityPoint, Range, Strategy,
+    AmountPoint, PinFutureResult, PricePoint, QuantityPoint, Range, Strategy,
 };
 use crate::noun::*;
 
@@ -102,9 +102,9 @@ impl Strategy for Grid {
         sell: &S,
     ) -> Result<(), Box<dyn Error + Send + Sync>>
     where
-        P: Fn() -> ClosureFuture<PricePoint>,
-        B: Fn(Price, Amount) -> ClosureFuture<QuantityPoint>,
-        S: Fn(Price, Quantity) -> ClosureFuture<AmountPoint>,
+        P: Fn() -> PinFutureResult<PricePoint>,
+        B: Fn(Price, Amount) -> PinFutureResult<QuantityPoint>,
+        S: Fn(Price, Quantity) -> PinFutureResult<AmountPoint>,
     {
         let price_point = price().await?;
         if self.is_reached_stop_loss(price_point.value()) {

@@ -42,7 +42,7 @@ impl Range {
     }
 }
 
-pub type ClosureFuture<T> =
+pub type PinFutureResult<T> =
     Pin<Box<dyn Future<Output = Result<T, Box<dyn Error + Send + Sync>>> + Send + Sync>>;
 
 pub trait Strategy {
@@ -53,15 +53,15 @@ pub trait Strategy {
         sell: &S,
     ) -> impl Future<Output = Result<(), Box<dyn Error + Send + Sync>>>
     where
-        P: Fn() -> ClosureFuture<PricePoint>,
-        B: Fn(Price, Amount) -> ClosureFuture<QuantityPoint>,
-        S: Fn(Price, Quantity) -> ClosureFuture<AmountPoint>;
+        P: Fn() -> PinFutureResult<PricePoint>,
+        B: Fn(Price, Amount) -> PinFutureResult<QuantityPoint>,
+        S: Fn(Price, Quantity) -> PinFutureResult<AmountPoint>;
 }
 
 pub trait Exchanger {
-    fn spawn_price(self: &Arc<Self>) -> impl Fn() -> ClosureFuture<PricePoint>;
-    fn spawn_buy(self: &Arc<Self>) -> impl Fn(Price, Amount) -> ClosureFuture<QuantityPoint>;
-    fn spawn_sell(self: &Arc<Self>) -> impl Fn(Price, Quantity) -> ClosureFuture<AmountPoint>;
+    fn spawn_price(self: &Arc<Self>) -> impl Fn() -> PinFutureResult<PricePoint>;
+    fn spawn_buy(self: &Arc<Self>) -> impl Fn(Price, Amount) -> PinFutureResult<QuantityPoint>;
+    fn spawn_sell(self: &Arc<Self>) -> impl Fn(Price, Quantity) -> PinFutureResult<AmountPoint>;
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -195,8 +195,8 @@ pub(crate) mod tests_general {
     }
 
     pub(super) struct Trading {
-        pub(super) buy: Box<dyn Fn(Price, Amount) -> ClosureFuture<QuantityPoint>>,
-        pub(super) sell: Box<dyn Fn(Price, Quantity) -> ClosureFuture<AmountPoint>>,
+        pub(super) buy: Box<dyn Fn(Price, Amount) -> PinFutureResult<QuantityPoint>>,
+        pub(super) sell: Box<dyn Fn(Price, Quantity) -> PinFutureResult<AmountPoint>>,
         pub(super) buying: Arc<Mutex<Buying>>,
         pub(super) selling: Arc<Mutex<Selling>>,
     }
@@ -214,7 +214,7 @@ pub(crate) mod tests_general {
     pub(super) fn simple_trading() -> Trading {
         let buying_information = Arc::new(Mutex::new(Buying::default()));
         let buying = buying_information.clone();
-        let buy = move |price: Price, amount: Amount| -> ClosureFuture<QuantityPoint> {
+        let buy = move |price: Price, amount: Amount| -> PinFutureResult<QuantityPoint> {
             let quantity = (amount / price).trunc_with_scale(5);
             {
                 let mut buying = buying.lock().unwrap();
@@ -232,7 +232,7 @@ pub(crate) mod tests_general {
 
         let selling_information = Arc::new(Mutex::new(Selling::default()));
         let selling = selling_information.clone();
-        let sell = move |price: Price, quantity: Quantity| -> ClosureFuture<AmountPoint> {
+        let sell = move |price: Price, quantity: Quantity| -> PinFutureResult<AmountPoint> {
             let income = (quantity / price).trunc_with_scale(5);
             {
                 let mut selling = selling.lock().unwrap();
@@ -257,9 +257,9 @@ pub(crate) mod tests_general {
         result
     }
 
-    pub(crate) fn simple_prices(prices: Vec<f64>) -> impl Fn() -> ClosureFuture<PricePoint> {
+    pub(crate) fn simple_prices(prices: Vec<f64>) -> impl Fn() -> PinFutureResult<PricePoint> {
         let iter = Mutex::new(prices.into_iter());
-        let price = move || -> ClosureFuture<PricePoint> {
+        let price = move || -> PinFutureResult<PricePoint> {
             let item = iter.lock().unwrap().borrow_mut().next().unwrap();
 
             let f = async move { Ok(PricePoint::new(decimal(item))) };
