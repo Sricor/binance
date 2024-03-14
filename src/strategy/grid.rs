@@ -107,11 +107,16 @@ impl Strategy for Grid {
         S: Fn(Price, Quantity) -> PinFutureResult<AmountPoint>,
     {
         let price_point = price().await?;
+
         if self.is_reached_stop_loss(price_point.value()) {
             // TODO
         }
 
-        self.limit.trap(price, buy, sell).await?;
+        let price = &Self::spawn_price(price_point);
+
+        self.limit
+            .trap(price, buy, sell)
+            .await?;
 
         Ok(())
     }
@@ -127,7 +132,7 @@ mod tests_grid {
             self.investment == other.investment
                 && self.buying == other.buying
                 && self.selling == other.selling
-                && *self.position.lock().unwrap() == *other.position.lock().unwrap()
+                && *self.position.lock().ignore_poison() == *other.position.lock().ignore_poison()
         }
     }
 
