@@ -56,6 +56,15 @@ pub trait Strategy {
         P: Fn() -> PinFutureResult<PricePoint>,
         B: Fn(Price, Amount) -> PinFutureResult<QuantityPoint>,
         S: Fn(Price, Quantity) -> PinFutureResult<AmountPoint>;
+
+    fn spawn_price(source: PricePoint) -> impl Fn() -> PinFutureResult<PricePoint> {
+        move || -> PinFutureResult<PricePoint> {
+            let source = source.clone();
+            let f = async move { Ok(source) };
+
+            Box::pin(f)
+        }
+    }
 }
 
 pub trait Exchanger {
@@ -168,6 +177,8 @@ pub(crate) mod tests_general {
     pub(super) use tracing::debug;
     pub(super) use tracing_test::traced_test;
 
+    pub(super) use crate::extension::LockResultExt;
+
     use super::*;
 
     pub(super) fn decimal(value: f64) -> Decimal {
@@ -260,8 +271,8 @@ pub(crate) mod tests_general {
     pub(crate) fn simple_prices(prices: Vec<f64>) -> impl Fn() -> PinFutureResult<PricePoint> {
         let iter = Mutex::new(prices.into_iter());
         let price = move || -> PinFutureResult<PricePoint> {
-            let item = iter.lock().unwrap().borrow_mut().next().unwrap();
-
+            let item = iter.lock().ignore_poison().borrow_mut().next().unwrap();
+            println!("{item}");
             let f = async move { Ok(PricePoint::new(decimal(item))) };
 
             Box::pin(f)

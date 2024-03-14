@@ -1,6 +1,8 @@
 pub mod spot;
 pub mod strategy;
 
+mod extension;
+
 pub mod noun {
     pub use rust_decimal::Decimal;
 
