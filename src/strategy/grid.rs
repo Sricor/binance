@@ -17,7 +17,7 @@ pub struct Grid {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct GridOptions {
-    pub stop_loss: Option<Price>,
+    pub stop_loss: Option<Range>,
 }
 
 impl Grid {
@@ -49,7 +49,7 @@ impl Grid {
             result.push(LimitPosition::new(
                 investment,
                 Range(buying, buying + (interval / Decimal::TWO)),
-                Range(selling - (interval / Decimal::TWO), selling),
+                Range(selling - (interval / Decimal::TWO), range.high().clone()),
                 None,
             ))
         }
@@ -71,26 +71,16 @@ impl Grid {
         result
     }
 
-    pub fn predictive_highest_profit_price(&self) -> Vec<Price> {
-        let positions = self.limit.positions();
-        let mut result = Vec::with_capacity(positions.len() + 1);
-
-        for i in positions.iter() {
-            let buying_price = i.buying.0 * Decimal::from_f64(1.0001).unwrap();
-            let selling_price = i.selling.1 * Decimal::from_f64(0.9999).unwrap();
-            result.push(buying_price.trunc_with_scale(8));
-            result.push(selling_price.trunc_with_scale(8));
-        }
-
-        result
-    }
-
-    fn is_reached_stop_loss(&self, price: &Price) -> bool {
-        if let Some(v) = &self.options.stop_loss {
-            return price < v;
+    pub fn is_reached_stop_loss(&self, price: &Price) -> bool {
+        if let Some(range) = &self.options.stop_loss {
+            return range.is_within_inclusive(price);
         }
 
         false
+    }
+
+    pub fn is_all_short(&self) -> bool {
+        self.limit.is_all_short()
     }
 }
 
@@ -107,16 +97,21 @@ impl Strategy for Grid {
         S: Fn(Price, Quantity) -> PinFutureResult<AmountPoint>,
     {
         let price_point = price().await?;
+        let price = price_point.value().clone();
 
-        if self.is_reached_stop_loss(price_point.value()) {
-            // TODO
+        if self.is_reached_stop_loss(&price) {
+            for position in self.limit.positions().iter() {
+                if !position.is_short() {
+                    position.sell(sell, price).await?;
+                }
+            }
+
+            return Ok(());
         }
 
         let price = &Self::spawn_price(price_point);
 
-        self.limit
-            .trap(price, buy, sell)
-            .await?;
+        self.limit.trap(price, buy, sell).await?;
 
         Ok(())
     }
@@ -124,6 +119,8 @@ impl Strategy for Grid {
 
 #[cfg(test)]
 mod tests_grid {
+    use std::sync::atomic::Ordering;
+
     use super::super::tests_general::*;
     use super::*;
 
@@ -143,13 +140,13 @@ mod tests_grid {
             LimitPosition::new(
                 decimal(33.333333),
                 Range(decimal(50.0), decimal(55.0)),
-                Range(decimal(65.0), decimal(70.0)),
+                Range(decimal(65.0), decimal(90.0)),
                 None,
             ),
             LimitPosition::new(
                 decimal(33.333333),
                 Range(decimal(60.0), decimal(65.0)),
-                Range(decimal(75.0), decimal(80.0)),
+                Range(decimal(75.0), decimal(90.0)),
                 None,
             ),
             LimitPosition::new(
@@ -166,13 +163,13 @@ mod tests_grid {
             LimitPosition::new(
                 decimal(50.0),
                 Range(decimal(50.0), decimal(56.66666650)),
-                Range(decimal(69.99999950), decimal(76.666666)),
+                Range(decimal(69.99999950), decimal(90.0)),
                 None,
             ),
             LimitPosition::new(
                 decimal(50.0),
                 Range(decimal(63.333333), decimal(69.99999950)),
-                Range(decimal(83.33333250), decimal(89.999999)),
+                Range(decimal(83.33333250), decimal(90.0)),
                 None,
             ),
         ];
@@ -204,28 +201,43 @@ mod tests_grid {
         assert_eq!(grid.predictive_lowest_profit_price(), target);
     }
 
-    #[test]
-    fn test_predictive_highest_profit_price() {
-        let grid = Grid::new(
+    #[tokio::test]
+    #[traced_test]
+    async fn test_stop_loss() {
+        let trading = simple_trading();
+        let grid: Grid = Grid::new(
             decimal(50.0),
-            Range(decimal(30.75), decimal(175.35)),
-            6,
-            None,
+            Range(decimal(100.0), decimal(175.35)),
+            4,
+            Some(GridOptions {
+                stop_loss: Some(Range(decimal(80.0), decimal(90.0))),
+            }),
         );
 
-        let target = vec![
-            decimal(30.75307500),
-            decimal(78.94210500),
-            decimal(54.85548500),
-            decimal(103.0396950),
-            decimal(78.95789500),
-            decimal(127.1372850),
-            decimal(103.0603050),
-            decimal(151.2348750),
-            decimal(127.1627150),
-            decimal(175.3324650),
-        ];
+        assert_eq!(grid.is_reached_stop_loss(&decimal(75.0)), false);
+        assert_eq!(grid.is_reached_stop_loss(&decimal(80.0)), true);
+        assert_eq!(grid.is_reached_stop_loss(&decimal(85.0)), true);
+        assert_eq!(grid.is_reached_stop_loss(&decimal(90.0)), true);
+        assert_eq!(grid.is_reached_stop_loss(&decimal(95.0)), false);
 
-        assert_eq!(grid.predictive_highest_profit_price(), target);
+        let prices = vec![100.0, 110.0, 125.0, 100.0, 95.0, 85.0];
+        let price = simple_prices(prices.clone());
+
+        for _ in prices.iter() {
+            grid.trap(&price, &trading.buy, &trading.sell)
+                .await
+                .unwrap();
+        }
+
+        assert_eq!(trading.buying().count.load(Ordering::Relaxed), 2);
+        assert_eq!(trading.selling().count.load(Ordering::Relaxed), 2);
+
+        assert_eq!(
+            trading.buying().prices,
+            vec![decimal(100.0), decimal(125.0)]
+        );
+        assert_eq!(trading.selling().prices, vec![decimal(85.0), decimal(85.0)]);
+
+        assert_eq!(grid.is_all_short(), true);
     }
 }
