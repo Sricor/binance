@@ -272,7 +272,6 @@ pub(crate) mod tests_general {
         let iter = Mutex::new(prices.into_iter());
         let price = move || -> PinFutureResult<PricePoint> {
             let item = iter.lock().ignore_poison().borrow_mut().next().unwrap();
-            println!("{item}");
             let f = async move { Ok(PricePoint::new(decimal(item))) };
 
             Box::pin(f)

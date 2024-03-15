@@ -71,7 +71,7 @@ impl LimitPosition {
         }
     }
 
-    async fn buy<B>(
+    pub(crate) async fn buy<B>(
         &self,
         f: B,
         price: Price,
@@ -98,7 +98,11 @@ impl LimitPosition {
         Ok(result)
     }
 
-    async fn sell<S>(&self, f: S, price: Price) -> Result<AmountPoint, Box<dyn Error + Send + Sync>>
+    pub(crate) async fn sell<S>(
+        &self,
+        f: S,
+        price: Price,
+    ) -> Result<AmountPoint, Box<dyn Error + Send + Sync>>
     where
         S: Fn(Price, Quantity) -> PinFutureResult<AmountPoint>,
     {
@@ -173,6 +177,16 @@ impl Limit {
 
     pub fn positions(&self) -> &Vec<LimitPosition> {
         &self.positions
+    }
+
+    pub fn is_all_short(&self) -> bool {
+        for position in self.positions.iter() {
+            if !position.is_short() {
+                return false;
+            }
+        }
+
+        true
     }
 }
 
@@ -324,6 +338,8 @@ mod tests_limit_trap {
             assert_eq!(buying.amounts, vec![decimal(50.0)]);
             assert_eq!(buying.count.load(Ordering::SeqCst), 1);
             assert_eq!(limit.positions[0].buying_count(), 1);
+
+            assert_eq!(limit.is_all_short(), false);
         }
     }
 
@@ -353,6 +369,8 @@ mod tests_limit_trap {
             assert_eq!(buying.amounts, vec![decimal(50.0)]);
             assert_eq!(buying.count.load(Ordering::SeqCst), 1);
             assert_eq!(limit.positions[0].buying_count(), 1);
+
+            assert_eq!(limit.is_all_short(), false);
         }
     }
 
@@ -382,6 +400,8 @@ mod tests_limit_trap {
             assert_eq!(buying.amounts, vec![decimal(50.0)]);
             assert_eq!(buying.count.load(Ordering::SeqCst), 1);
             assert_eq!(limit.positions[0].buying_count(), 1);
+
+            assert_eq!(limit.is_all_short(), false);
         }
     }
 
